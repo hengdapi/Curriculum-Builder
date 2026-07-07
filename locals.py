@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import sys,copy
+import sys,copy,os,subprocess
 from typing import Literal
 
 import pandas as pd
 from PySide6.QtWidgets import QTableWidgetItem
-from qfluentwidgets import TableWidget
+from qfluentwidgets_pro import TableWidget
 
 from wr_settings import *
 
 sys.setrecursionlimit(10000)
 logging.basicConfig(format="[%(levelname)s] %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
                     level=logging.INFO)
-# ,filename="log.txt",filemode="w",encoding="utf-8"
+#,filename="log.txt",filemode="w",encoding="utf-8"
 def lesson_to_str(lesson):
     """
     根据课程节次生成时间描述
@@ -30,6 +30,71 @@ def lesson_to_str(lesson):
 
     return f"{time}第{lesson}节"
 
+def show_error(page,error:Exception):
+    InfoBar.error("发生错误",str(error)+"\n错误信息已存入日志，可通过首页按钮反馈",duration=-1,parent=page)
+
+def restart_app(parent=None,delay_ms=100):
+    """
+    重启当前应用程序（无黑窗口 · 鲁棒版）
+    机制：
+    1. 用 DETACHED_PROCESS 完全分离新进程（父进程退出不影响子进程）
+    2. 用 CREATE_NO_WINDOW 隐藏任何控制台窗口
+    3. 新进程启动时在 log.txt 写入一条"新进程启动成功"的诊断记录
+    """
+    import threading, time
+
+    # ===== 路径在调用时就计算好，不受后续 cwd 变化影响 =====
+    if getattr(sys, 'frozen', False):
+        # 打包后：sys.executable 就是 .exe 本身
+        program = sys.executable
+        args = []
+        cwd = os.path.dirname(program)
+    else:
+        # 开发环境
+        program = sys.executable.replace("python.exe", "pythonw.exe")  # 用 pythonw 就无黑窗口
+        if not os.path.exists(program):
+            program = sys.executable  # 如果找不到 pythonw，退回 python
+        script_path = os.path.abspath(sys.argv[0])
+        args = [script_path]
+        cwd = os.path.dirname(script_path)
+
+    logging.info(f"[重启] program={program} | args={args} | cwd={cwd}")
+
+    # ===== 关键：用 Windows 分离进程标志，完全脱离旧进程 =====
+    DETACHED_PROCESS = 0x00000008
+    CREATE_NO_WINDOW = 0x08000000
+
+    try:
+        proc = subprocess.Popen(
+            [program] + args,
+            creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW,
+            cwd=cwd,
+            close_fds=True,
+            stdin=None,
+            stdout=None,
+            stderr=None
+        )
+        logging.info(f"[重启] 新进程 PID={proc.pid}，启动成功")
+    except Exception as e:
+        logging.error(f"[重启] 启动新进程失败: {e}")
+        # 兜底：用 cmd /c start（最可靠，但可能有瞬时窗口闪烁）
+        try:
+            start_cmd = f'cmd.exe /c "cd /d \"{cwd}\" & start \"\" \"{program}\" {" ".join(args)}"'
+            subprocess.Popen(start_cmd, shell=True)
+            logging.info(f"[重启] 兜底方案启动: {start_cmd}")
+        except Exception as e2:
+            logging.error(f"[重启] 兜底也失败: {e2}")
+        os._exit(0)
+
+    # ===== 延迟后强制退出旧进程 =====
+    def _force_exit():
+        time.sleep(delay_ms / 1000.0)
+        logging.info("[重启] 旧进程退出")
+        os._exit(0)
+
+    t = threading.Thread(target=_force_exit, daemon=True)
+    t.start()
+
 def is_special(subject:str):
     """
     判断给定的课程名称是否为特殊课程
@@ -43,6 +108,7 @@ def is_special(subject:str):
 days = [0,"星期一", "星期二", "星期三", "星期四", "星期五"]
 
 def display_df_in_table(table_widget: TableWidget, df: pd.DataFrame):
+    table_widget.clear()
     df.columns=df.columns.astype(str)
     # 设置行数和列数
     table_widget.setRowCount(df.shape[0])
@@ -115,6 +181,8 @@ class Time:
         self.all=(self.week=="all")
         self.half=not self.all
     def __eq__(self, other):
+        if not isinstance(other,Time):
+            return False
         return self.day==other.day and self.lesson==other.lesson and self.week==other.week
     def __hash__(self):
         return hash((self.day,self.lesson,self.week))
@@ -366,9 +434,21 @@ class Rule_type:
     set_continue="set_continue"
     half_num="half_num"
 
+rule_types={
+    "set_time": "{subject}|学科必须排在|{time}",
+    "avoid_time": "{subject}|学科不能排在|{time}",
+    "priority_time": "{subject}|学科优先排在|{time}",
+    "set_num": "{subject}|学科同一时间最多排|{number}|节课",
+    "avoid_subject": "{subjectA}|学科与|{subjectB}|学科不能排在同一时间",
+    "avoid_teacher": "{teacherA}|老师与|{teacherB}|老师不能在同一时间有课",
+    "set_continue": "{subject}|学科每周连堂|{number}|次",
+    "half_num": "{subject}|学科两周排一次课（即单双周）"
+}
+
 class Rule:
     def __init__(self,**kwargs):
         self.type=kwargs["type"]
+        self.time=self.subject=self.number=self.subjectA=self.subjectB=self.teacherA=self.teacherB=None
         if self.type in [Rule_type.set_time,Rule_type.avoid_time,Rule_type.priority_time]:
             self.time=Time(string=kwargs["time"])
         if self.type in [Rule_type.set_time,Rule_type.avoid_time,Rule_type.priority_time,Rule_type.set_num,Rule_type.set_continue,Rule_type.half_num]:
@@ -385,7 +465,7 @@ class Rule:
     def __str__(self):
         ans=rule_types[self.type].replace("|","").replace("{"," ").replace("}"," ")
         for string in self.__dict__:
-            if string=="type":
+            if string=="type" or self.__dict__[string] is None:
                 continue
             ans=ans.replace(string,str(self.__dict__[string]))
         return ans
@@ -400,9 +480,6 @@ class Rule:
         if not isinstance(other,Rule):
             return False
         return self.type==other.type and self.__dict__==other.__dict__
-
-    def __hash__(self):
-        return hash(self.__dict__)
 
 # 解析课程信息
 class LessonInfo:
@@ -433,39 +510,44 @@ class LessonInfo:
         for subject in self.subjects.values():
             subject.continue_times={clas:0 for clas in self.class_lst}
 
-    @property
-    def rules(self):
-        rules: list[Rule]=[]
-        for rule in cfg.rules.value:
-            rule=Rule(**rule)
-            rules.append(rule)
-            if rule.type==Rule_type.set_time:
-                set_lessons.append((rule.time,rule.subject))
-            elif rule.type==Rule_type.priority_time:
-                if rule.time not in priority_subjects:
-                    priority_subjects[rule.time]=[rule.subject]
-                else:
-                    priority_subjects[rule.time].append(rule.subject)
-            elif rule.type==Rule_type.half_num:
-                half_subjects.add(rule.subject)
-            elif rule.type==Rule_type.set_continue:
-                continue_num[rule.subject]=int(rule.number)
-        return rules
+        self.rules: list[Rule]=[]
 lesson_info=LessonInfo()
-
-rule_types={
-    "set_time": "{subject}|学科必须排在|{time}",
-    "avoid_time": "{subject}|学科不能排在|{time}",
-    "priority_time": "{subject}|学科优先排在|{time}",
-    "set_num": "{subject}|学科同一时间最多排|{number}|节课",
-    "avoid_subject": "{subjectA}|学科与|{subjectB}|学科不能排在同一时间",
-    "avoid_teacher": "{teacherA}|老师与|{teacherB}|老师不能在同一时间有课",
-    "set_continue": "{subject}|学科每周连堂|{number}|次",
-    "half_num": "{subject}|学科两周排一次课（即单双周）"
-}
 
 priority_subjects:dict[Time,list[Subject]]={}
 half_subjects:set[Subject]=set()
 continue_num:dict[Subject,int]={}
 set_lessons:list[tuple[Time,Subject]]=[]
+
+for rule in cfg.rules.value:
+    rule=Rule(**rule)
+    lesson_info.rules.append(rule)
+    if rule.type==Rule_type.set_time:
+        set_lessons.append((rule.time,rule.subject))
+    elif rule.type==Rule_type.priority_time:
+        if rule.time not in priority_subjects:
+            priority_subjects[rule.time]=[rule.subject]
+        else:
+            priority_subjects[rule.time].append(rule.subject)
+    elif rule.type==Rule_type.half_num:
+        half_subjects.add(rule.subject)
+    elif rule.type==Rule_type.set_continue:
+        continue_num[rule.subject]=int(rule.number)
+
 logging.info("课程信息解析完毕，生成初始化完成")
+
+def diff_cfg(new_classes:list,new_teachers:list,new_subjects:list)->tuple[set,set,set]:
+    old_classes=set(lesson_info.class_names)
+    diff_classes=old_classes-set(new_classes)
+    diff_teachers=set(lesson_info.teachers)-set(new_teachers)
+    diff_subjects=set(lesson_info.subjects)-set(new_subjects)
+    return diff_classes,diff_teachers,diff_subjects
+
+def del_cfg_diff(diff_classes:set,diff_teachers:set,diff_subjects:set)->None:
+    for grade,classes in cfg.grades_info.value.items():
+        cfg.grades_info.value[grade]=list(set(classes)-diff_classes)
+        cfg.grades_info.value[grade].sort(key=lambda clas:lesson_info.class_names.index(clas))
+    new_rules=copy.copy(cfg.rules.value)
+    for rule in cfg.rules.value:
+        if rule.get("subject") in diff_subjects or rule.get("subjectA") in diff_subjects or rule.get("subjectB") in diff_subjects or rule.get("teacherA") in diff_teachers or rule.get("teacherB") in diff_teachers:
+            new_rules.remove(rule)
+    cfg.rules.value=new_rules

@@ -1,7 +1,9 @@
 # coding=utf-8
+import os
+
 from PySide6.QtCore import QTime
 
-from qfluentwidgets.components.date_time.picker_base import SeparatorWidget
+from qfluentwidgets_pro.components.date_time.picker_base import SeparatorWidget
 from locals import *
 from style import *
 from wr_settings import *
@@ -38,7 +40,7 @@ class RuleMessageBox(MessageBoxBase):
     def check_rule(self,new_rule:Rule):
         new_type=new_rule.type
         rules=lesson_info.rules
-        if self.edit:
+        if self.edit and self.curr_rule in rules:
             rules.remove(self.curr_rule)
         if new_rule==self.curr_rule:
             return True,None
@@ -110,8 +112,8 @@ class RuleMessageBox(MessageBoxBase):
                 else:
                     items=["无可选项"]
                 combo.addItems(items)
-                if self.curr_rule:
-                    combo.setCurrentText(getattr(self.curr_rule,string_name))
+                if self.edit:
+                    combo.setCurrentText(str(getattr(self.curr_rule,string_name)))
                 completer=QCompleter(items,combo)
                 combo.setCompleter(completer)
                 add_widget(combo,string_layout)
@@ -138,36 +140,29 @@ class Settings(QFrame):
         setattr(getattr(cfg,attr),"value",value)
         save_settings()
 
-    def update_table_preview(self):
+    def update_table_style(self):
         save_settings()
         if cfg.morning_class_num.value+cfg.afternoon_class_num.value>len(cfg.lessons_time.value):
             for lesson in range(len(cfg.lessons_time.value)+1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1):
                 cfg.lessons_time.value[str(lesson)]=[[0,0],[0,0]]
         save_settings()
-        # 根据是否显示教师姓名调整表格信息和样式
-        if cfg.show_teachers.value:
-            info="课程信息\n教师姓名"
-        else:
-            info="课程信息"
-
-        self.table=table_style(info)
-        # 根据设置选择表格显示方式
-        display_df_in_table(self.table_style_preview,self.table)
-        self.table_style_preview.setFixedHeight(50*self.table_style_preview.rowCount()+40)
         self.show_lesson_time_group()
 
     def show_lessons_info(self):
         lessons_info=pd.DataFrame(cfg.lessons_info.value)
         display_df_in_table(self.lessons_info_table,lessons_info)
 
-        # 保存学科信息
-        new_subjects=[lessons_info.keys()[i][:-5] for i in range(1,len(lessons_info.keys()),2)]
-        subjects_table_keys=["班级"]
-        for subject in new_subjects:
-            subjects_table_keys.append(subject+" - 课时")
-            subjects_table_keys.append(subject+" - 任课老师")
-        cfg.subjects_info.value=new_subjects
-        save_settings()
+    def download_template(self):
+        filename,_=QFileDialog.getSaveFileName(
+            self,
+            "保存课程信息模板",
+            "",
+            "Excel文件 (*.xlsx *.xls)"
+        )
+        if not filename:
+            return
+        shutil.copy("template.xlsx",filename)
+        os.system(f"start {filename}")
 
     def pick_lessons_info(self):
         user_info_file,_=QFileDialog.getOpenFileName(
@@ -177,38 +172,47 @@ class Settings(QFrame):
             "Excel文件 (*.xlsx *.xls)"
         )
         # 处理上传的课程信息文件或使用已有配置
-        if user_info_file:
-            try:
-                user_info=pd.read_excel(user_info_file)
-                rename_dict={}
-                for i in range(2,len(user_info.keys()),2):
-                    rename_dict[user_info.keys()[i]]=user_info.keys()[i-1]+" - 任课老师"
-                    rename_dict[user_info.keys()[i-1]]=user_info.keys()[i-1]+" - 课时"
-                user_info=user_info.rename(columns=rename_dict)
-                cfg.lessons_info.value=user_info.to_dict(orient="records")
-                for class_ in cfg.lessons_info.value:
-                    for key,value in class_.items():
-                        if pd.isna(value):
-                            class_[key]=None
-
-                new_subjects=[user_info.keys()[i][:-5] for i in range(1,len(user_info.keys()),2)]
-                new_teachers=set()
-                subjects_table_keys=["班级"]
-                for subject in new_subjects:
-                    new_teachers|=set(user_info[subject+" - 任课老师"].to_list())
-                    subjects_table_keys.append(subject+" - 课时")
-                    subjects_table_keys.append(subject+" - 任课老师")
-                cfg.subjects_info.value=new_subjects
-                new_teachers=[x for x in new_teachers if not pd.isna(x)]
-                cfg.teachers_info.value=list(new_teachers)
-                save_settings()
-                self.show_lessons_info()
-            except:
-                e=traceback.format_exc()
-                logging.error(f"解析课程信息文件时出错：\n{e}")
-        else:
+        if not user_info_file:
             if cfg.lessons_info.value!="":
                 cfg.lessons_info.value=pd.DataFrame(cfg.lessons_info.value).to_json(orient="records", lines=False, force_ascii=False)
+            return
+        try:
+            user_info=pd.read_excel(user_info_file)
+            old_classes=[]
+            rename_dict={}
+            for i in range(2,len(user_info.keys()),2):
+                rename_dict[user_info.keys()[i]]=user_info.keys()[i-1]+" - 任课老师"
+                rename_dict[user_info.keys()[i-1]]=user_info.keys()[i-1]+" - 课时"
+            user_info=user_info.rename(columns=rename_dict)
+            new_lessons_info=user_info.to_dict(orient="records")
+            for class_ in new_lessons_info:
+                old_classes.append(class_["班级"])
+                for key,value in class_.items():
+                    if pd.isna(value):
+                        class_[key]=None
+
+            new_subjects=[user_info.keys()[i][:-5] for i in range(1,len(user_info.keys()),2)]
+            new_teachers=set()
+            for subject in new_subjects:
+                new_teachers|=set(user_info[subject+" - 任课老师"].to_list())
+            new_teachers=[x for x in new_teachers if not pd.isna(x)]
+
+            diff_classes,diff_teachers,diff_subjects=diff_cfg(old_classes,new_teachers,new_subjects)
+            dialog=MessageBox("确认要更新课程信息表吗？","以下班级在新课程信息表中不存在：\n"+"、".join(diff_classes)+"\n以下老师在新课程信息表中不存在：\n"+"、".join(diff_teachers)+"\n以下科目在新课程信息表中不存在：\n"+"、".join(diff_subjects)+"\n与以上信息相关的设置将被删除",self.parent().parent().parent())
+            if not dialog.exec():
+                return
+            cfg.lessons_info.value=new_lessons_info
+            cfg.subjects_info.value=new_subjects
+            cfg.teachers_info.value=new_teachers
+            del_cfg_diff(diff_classes,diff_teachers,diff_subjects)
+            save_settings()
+            self.show_lessons_info()
+            InfoBar.success("课程信息表更新成功，应用将自动重启","",parent=self,duration=1500)
+            restart_app(1500)
+        except Exception as error:
+            e=traceback.format_exc()
+            logging.error(f"解析课程信息文件时出错：\n{e}")
+            show_error(self,error)
 
     def enable_rule_button(self):
         self.edit_rule_button.setEnabled(True)
@@ -219,9 +223,10 @@ class Settings(QFrame):
         if rule_dialog.exec():
             new_rule=rule_dialog.new_rule
             lesson_info.rules.append(new_rule)
-            item=QListWidgetItem(str(new_rule))
+            self.rule_list.addItem(str(new_rule))
+            # 获取刚添加的项并设置userData
+            item=self.rule_list.item(self.rule_list.count()-1)
             item.setData(Qt.UserRole,new_rule)
-            self.rule_list.addItem(item)
             cfg.rules.value.append(new_rule.to_dict())
             save_settings()
 
@@ -247,16 +252,33 @@ class Settings(QFrame):
             self.edit_rule_button.setEnabled(bool(len(lesson_info.rules)))
             cfg.rules.value.remove(selected_rule.data(Qt.UserRole).to_dict())
             save_settings()
-        except:
+        except Exception as error:
             e=traceback.format_exc()
             logging.error(f"删除规则时出错：\n{e}")
+            show_error(self,error)
 
     def show_rules(self):
         self.rule_list.clear()
         for rule in lesson_info.rules:
-            item=QListWidgetItem(str(rule))
+            self.rule_list.addItem(str(rule))
+            # 获取刚添加的项并设置userData
+            item=self.rule_list.item(self.rule_list.count()-1)
             item.setData(Qt.UserRole,rule)
-            self.rule_list.addItem(item)
+
+    def on_drag_rules(self):
+        new_rules=[]
+        for i in range(self.rule_list.count()):
+            item=self.rule_list.item(i)
+            rule=item.data(Qt.UserRole)
+            if rule:
+                new_rules.append(rule.to_dict())
+
+        # 更新配置并保存
+        cfg.rules.value=new_rules
+        save_settings()
+
+        # 同步更新 lesson_info.rules 的顺序
+        lesson_info.rules=[Rule(**r) for r in new_rules]
 
     def lesson_time_changed(self,lesson:int,end:bool,time:QTime):
         cfg.lessons_time.value[str(lesson)][end]=[time.hour(),time.minute()]
@@ -287,7 +309,7 @@ class Settings(QFrame):
     def show_activities(self):
         self.save_activity_lock=True
         self.activity_table.setRowCount(len(cfg.activity_info.value))
-        self.activity_table.setFixedHeight(min(300,len(cfg.activity_info.value)*40+40))
+        self.activity_table.setFixedHeight(min(300,len(cfg.activity_info.value)*50+50))
         r=0
         for activity,(start_time,end_time) in cfg.activity_info.value.items():
             item=QTableWidgetItem(activity)
@@ -335,7 +357,7 @@ class Settings(QFrame):
     def show_grades(self):
         self.save_grade_lock=True
         self.grade_table.setRowCount(len(cfg.grades_info.value))
-        self.grade_table.setFixedHeight(min(300,len(cfg.grades_info.value)*40+40))
+        self.grade_table.setFixedHeight(min(400,len(cfg.grades_info.value)*50+50))
         r=0
         left_classes=set(lesson_info.class_names)
         for classes in cfg.grades_info.value.values():
@@ -349,6 +371,7 @@ class Settings(QFrame):
             curr_classes=classes+left_classes
             if not self.grade_table.cellWidget(r,1):
                 classes_combo=MultiSelectComboBox()
+                classes_combo.setFixedSize(990,35)
                 classes_combo.addItems(curr_classes)
                 if classes:
                     classes_combo.setSelectedIndices(set(range(len(classes))))
@@ -380,8 +403,9 @@ class Settings(QFrame):
         self.save_grade_lock=True
         curr_grade_name=self.grade_table.item(self.grade_table.currentRow(),0).text()
         grade_names=list(cfg.grades_info.value.keys())
-        if grade_names.count(curr_grade_name)>1:
+        if curr_grade_name in grade_names:
             InfoBar.error("请勿设置名称重复的年级",f"名称“{curr_grade_name}”重复",parent=self.parent(),duration=2000)
+            self.grade_table.item(self.grade_table.currentRow(),0).setText(grade_names[self.grade_table.currentRow()])
             self.save_grade_lock=False
             return
         new_grade_info={}
@@ -406,7 +430,8 @@ class Settings(QFrame):
             return
         shutil.copy2(filename,"settings.json")
         InfoBar.success("成功导入设置",f"已导入{filename}",parent=self,duration=3000)
-        InfoBar.warning("请重启应用以确保设置生效","",parent=self,duration=-1)
+        InfoBar.info("应用将自动重启以使设置生效","",parent=self,duration=1500)
+        restart_app(1500)
 
     def __init__(self,parent=None):
         try:
@@ -448,21 +473,30 @@ class Settings(QFrame):
             biggersubheader("课程信息",self,self.layout)
 
             # 上传课程信息文件
-            self.user_info_file=PushSettingCard(text="选择文件",icon=FluentIcon.INFO,title="课程信息文件",content="存储任课老师及课时、班级信息的表格")
-            add_widget(self.user_info_file,self.layout)
+            self.user_info_card=SettingCard(icon=FluentIcon.INFO,title="课程信息文件",content="存储任课老师及课时、班级信息的表格")
+            add_widget(self.user_info_card,self.layout)
+            self.download_template_button=button("下载导入模板",self,self.user_info_card.layout())
+            self.download_template_button.setFixedSize(150,35)
+            self.download_template_button.setIcon(FluentIcon.DOWNLOAD)
+            self.download_template_button.clicked.connect(self.download_template)
+
+            self.user_info_file=button("选择文件",self,self.user_info_card.layout())
+            self.user_info_file.setFixedSize(130,35)
+            self.user_info_file.setIcon(FluentIcon.FOLDER)
             self.user_info_file.clicked.connect(self.pick_lessons_info)
-            self.lessons_info_table=TableWidget()
+            self.lessons_info_table=LineTableWidget()
             self.show_lessons_info()
             self.lessons_info_table.setFixedHeight(500)
             self.lessons_info_table.setEditTriggers(TableWidget.NoEditTriggers)
             add_widget(self.lessons_info_table,self.layout)
 
+
             # 设置每天上午和下午的课程数量
             self.morning_class_num=RangeSettingCard(cfg.morning_class_num,FluentIcon.FLAG,title="每天上午上课数量",content="学校每天上午的上课数量")
-            self.morning_class_num.valueChanged.connect(self.update_table_preview)
+            self.morning_class_num.valueChanged.connect(self.update_table_style)
             add_widget(self.morning_class_num,self.layout,0)
             self.afternoon_class_num=RangeSettingCard(cfg.afternoon_class_num,FluentIcon.FLAG,title="每天下午上课数量",content="学校每天下午的上课数量")
-            self.afternoon_class_num.valueChanged.connect(self.update_table_preview)
+            self.afternoon_class_num.valueChanged.connect(self.update_table_style)
             add_widget(self.afternoon_class_num,self.layout)
 
             subheader("年级信息",self,self.layout)
@@ -482,7 +516,7 @@ class Settings(QFrame):
             self.del_grade_button.clicked.connect(self.del_grade)
 
             self.save_grade_lock=True
-            self.grade_table=TableWidget()
+            self.grade_table=LineTableWidget()
             self.grade_table.setColumnCount(2)
             self.grade_table.setHorizontalHeaderLabels(["年级名称","所含班级"])
             self.grade_table.setColumnWidth(1,1000)
@@ -520,9 +554,13 @@ class Settings(QFrame):
             self.del_rule_button.clicked.connect(self.del_rule)
             rule_list_layout.addStretch(1)
 
-            self.rule_list=ListWidget()
+            self.rule_list=RoundListWidget()
             self.rule_list.setFixedHeight(200)
+            self.rule_list.setDragEnabled(True)
+            self.rule_list.setDropIndicatorShown(True)
+            self.rule_list.setDragDropMode(QAbstractItemView.InternalMove)
             self.rule_list.itemClicked.connect(self.enable_rule_button)
+            self.rule_list.model().rowsMoved.connect(self.on_drag_rules)
             self.show_rules()
             add_widget(self.rule_list,self.layout)
 
@@ -551,7 +589,7 @@ class Settings(QFrame):
             self.activity_operation_layout.addStretch(1)
 
             self.save_activity_lock=False
-            self.activity_table=TableWidget()
+            self.activity_table=LineTableWidget()
             self.activity_table.setColumnCount(3)
             self.activity_table.setHorizontalHeaderLabels(["活动名称","开始时间","结束时间"])
             for c in range(3):
@@ -579,7 +617,7 @@ class Settings(QFrame):
 
             # 设置是否显示教师姓名和表格排版方式
             show_teachers=SwitchSettingCard(configItem=cfg.show_teachers,icon=FluentIcon.TAG,title="显示教师姓名",content="在课程名称下方标注任课教师姓名")
-            show_teachers.checkedChanged.connect(self.update_table_preview)
+            show_teachers.checkedChanged.connect(self.update_table_style)
             add_widget(show_teachers,self.layout,0)
 
             text_style=SettingCard(FluentIcon.FONT,"文字样式","设置课程表文字样式")
@@ -594,20 +632,12 @@ class Settings(QFrame):
             self.text_size.valueChanged.connect(lambda :self.save_cfg("text_size",self.text_size.value()))
             add_widget(self.text_size,text_style.hBoxLayout)
             add_widget(text_style,self.layout)
-
-            # 预览课程表
-            subheader("预览",self,self.layout)
-            self.table_style_preview=TableWidget()
-            self.table_style_preview.verticalHeader().setDefaultSectionSize(50)
-            self.table_style_preview.horizontalHeader().setDefaultSectionSize(155)
-            self.table_style_preview.setEditTriggers(TableWidget.NoEditTriggers)
-            add_widget(self.table_style_preview,self.layout)
-
-            self.update_table_preview()
+            self.update_table_style()
 
             self.scroll_area.setWidget(view)
             main_layout.addWidget(self.scroll_area)
             logging.info("设置页面加载完成")
-        except:
+        except Exception as error:
             e=traceback.format_exc()
             logging.critical(f"加载设置页面出错：\n{e}")
+            show_error(self,error)

@@ -1,6 +1,6 @@
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import *
-from qfluentwidgets import *
+from qfluentwidgets_pro import *
 
 class fonts:
     title=QFont("Microsoft YaHei",30,QFont.Bold)

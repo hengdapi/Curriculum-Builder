@@ -2,28 +2,30 @@ import logging
 import traceback
 
 from PySide6.QtCore import Qt
-from qfluentwidgets import QConfig,RangeConfigItem,OptionsConfigItem,BoolValidator,ConfigItem,qconfig,RangeValidator,InfoBar,InfoBarPosition
-
+from qfluentwidgets_pro import QConfig,RangeConfigItem,OptionsConfigItem,BoolValidator,ConfigItem,qconfig,RangeValidator,InfoBar,InfoBarPosition
 
 class Settings(QConfig):
-    morning_class_num=RangeConfigItem("table_style","morning_class_num",4,RangeValidator(1,10))
-    afternoon_class_num=RangeConfigItem("table_style","afternoon_class_num",2,RangeValidator(1,10))
-    show_teachers=OptionsConfigItem("table_style","show_teachers",True,BoolValidator())
-    text_font=ConfigItem("table_style","text_font","宋体")
-    text_size=ConfigItem("table_style","text_size",9)
-    school_name=ConfigItem("table_style","school_name","学校名称")
-    lessons_time=ConfigItem("table_style","lessons_time",{})
+    morning_class_num=RangeConfigItem("table_style","morning_class_num",4,RangeValidator(1,10),restart=True)
+    afternoon_class_num=RangeConfigItem("table_style","afternoon_class_num",2,RangeValidator(1,10),restart=True)
+    show_teachers=OptionsConfigItem("table_style","show_teachers",True,BoolValidator(),restart=True)
+    text_font=ConfigItem("table_style","text_font","宋体",restart=True)
+    text_size=ConfigItem("table_style","text_size",9,restart=True)
+    school_name=ConfigItem("table_style","school_name","学校名称",restart=True)
+    lessons_time=ConfigItem("table_style","lessons_time",{},restart=True)
 
-    subjects_info=ConfigItem("lessons_info","subjects_info",{})
-    lessons_info=ConfigItem("lessons_info","lessons_info",{})
-    teachers_info=ConfigItem("lessons_info","teachers_info",{})
-    grades_info=ConfigItem("lessons_info","grades_info",{})
+    subjects_info=ConfigItem("lessons_info","subjects_info",{},restart=True)
+    lessons_info=ConfigItem("lessons_info","lessons_info",{},restart=True)
+    teachers_info=ConfigItem("lessons_info","teachers_info",{},restart=True)
+    grades_info=ConfigItem("lessons_info","grades_info",{},restart=True)
 
-    activity_info=ConfigItem("activity_info","activity_info",{})
+    activity_info=ConfigItem("activity_info","activity_info",{},restart=True)
 
     rules=ConfigItem("rules","rules",{})
     reduce_continue=OptionsConfigItem("rules","reduce_continue",True,BoolValidator())
     average_subjects=OptionsConfigItem("rules","average_subjects",True,BoolValidator())
+
+    preview_splitter_state=ConfigItem("ui","preview_splitter_state",None)
+    window_geometry=ConfigItem("ui","window_geometry",None)
 
 def load_settings():
     cfg=Settings()

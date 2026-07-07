@@ -151,9 +151,12 @@ class GenerateThread(QThread):
                         add_continue=False
                         if subject in continue_num and subject.continue_times[clas]<continue_num[subject] and clas.left_subjects.count(subject)>=2 and \
                                 curr_time.lesson!=cfg.morning_class_num.value and curr_time.lesson!=cfg.morning_class_num.value+cfg.afternoon_class_num.value:
-                            if check(clas,next_time,subject):
-                                clas.add_lesson(next_time,subject.to_continuous_lesson())
+                            if continue_num[subject]-subject.continue_times[clas]==clas.left_subjects.count(subject)/2:
                                 add_continue=True
+                            else:
+                                add_continue=random.choice([True,False])
+                            if add_continue and check(clas,next_time,subject):
+                                clas.add_lesson(next_time,subject.to_continuous_lesson())
                             else:
                                 continue
                         if add_continue:
