@@ -1,4 +1,4 @@
-import random,time,math
+import random,time
 from locals import *
 from PySide6.QtCore import QThread,Signal
 
@@ -6,8 +6,8 @@ def check(clas: Class,time: Time,subject: Subject) -> bool:
     try:
         failed_reason=""
         logging.debug(f"检查能否在 {clas.name} 的 {time} 安排 {subject}")
-        if subject.get_teacher(clas).is_busy(time):
-            failed_reason=f"{subject} 的任课老师 {subject.get_teacher(clas).name} 在 {time} 有课"
+        if clas.get_teacher(subject).is_busy(time):
+            failed_reason=f"{subject} 的任课老师 {clas.get_teacher(subject).name} 在 {time} 有课"
 
         for rule in lesson_info.rules:
             # 不能排在指定时间
@@ -27,7 +27,7 @@ def check(clas: Class,time: Time,subject: Subject) -> bool:
                     failed_reason=f"已经在 {time} 安排了会引起冲突的 {rule.subjectA}"
             # 老师不能与另一老师同一时间有课
             elif rule.type==Rule_type.avoid_teacher:
-                teacher=subject.get_teacher(clas)
+                teacher=clas.get_teacher(subject)
                 teacherA = rule.teacherA
                 teacherB = rule.teacherB
                 if teacher==teacherA and teacherB.timetable.get(time):
@@ -121,7 +121,7 @@ class GenerateThread(QThread):
                                 curr_subjects.append(lessons[1])
 
                 for subject in curr_subjects:
-                    if cfg.reduce_continue.value and subject.get_teacher(clas).is_busy(curr_time.prev):
+                    if cfg.reduce_continue.value and clas.get_teacher(subject).is_busy(curr_time.prev):
                         curr_subjects.remove(subject)
                         curr_subjects.append(subject)
                     elif cfg.average_subjects.value and (subject in curr_priority or clas.left_subjects.count(subject)>5-curr_time.day+1):

@@ -1,6 +1,4 @@
 # coding=utf-8
-import os
-
 from PySide6.QtCore import QTime
 
 from qfluentwidgets_pro.components.date_time.picker_base import SeparatorWidget
@@ -484,12 +482,12 @@ class Settings(QFrame):
             self.user_info_file.setFixedSize(130,35)
             self.user_info_file.setIcon(FluentIcon.FOLDER)
             self.user_info_file.clicked.connect(self.pick_lessons_info)
+
             self.lessons_info_table=LineTableWidget()
             self.show_lessons_info()
-            self.lessons_info_table.setFixedHeight(500)
+            self.lessons_info_table.setFixedHeight(300)
             self.lessons_info_table.setEditTriggers(TableWidget.NoEditTriggers)
             add_widget(self.lessons_info_table,self.layout)
-
 
             # 设置每天上午和下午的课程数量
             self.morning_class_num=RangeSettingCard(cfg.morning_class_num,FluentIcon.FLAG,title="每天上午上课数量",content="学校每天上午的上课数量")
