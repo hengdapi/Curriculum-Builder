@@ -4,7 +4,7 @@ import sys,copy,os,subprocess
 from typing import Literal
 
 import pandas as pd
-from PySide6.QtWidgets import QTableWidgetItem
+from PySide6.QtWidgets import QTableWidgetItem,QTableWidget
 from qfluentwidgets_pro import TableWidget
 
 from wr_settings import *
@@ -33,7 +33,7 @@ def lesson_to_str(lesson):
 def show_error(page,error:Exception):
     InfoBar.error("发生错误",str(error)+"\n错误信息已存入日志，可通过首页按钮反馈",duration=-1,parent=page)
 
-def restart_app(parent=None,delay_ms=100):
+def restart_app(delay_ms=100):
     """
     重启当前应用程序（无黑窗口 · 鲁棒版）
     机制：
@@ -107,7 +107,7 @@ def is_special(subject:str):
 # 定义工作日列表
 days = [0,"星期一", "星期二", "星期三", "星期四", "星期五"]
 
-def display_df_in_table(table_widget: TableWidget, df: pd.DataFrame):
+def display_df_in_table(table_widget: TableWidget|QTableWidget, df: pd.DataFrame):
     table_widget.clear()
     df.columns=df.columns.astype(str)
     # 设置行数和列数
@@ -298,15 +298,13 @@ class Teacher:
         return data
 
 class Subject:
-    def __init__(self, name:str, teachers:dict[str,Teacher]):
+    def __init__(self, name:str):
         """
         初始化课程对象
 
         :param name: 课程名称
-        :param teachers: 课程任课教师列表({班级:老师})
         """
         self.name = name
-        self.teachers = teachers
         self.continuous=False
         self.continue_times:dict[Class,int]={}
         self.time_list:dict[Time,int]={Time(day,lesson):0 for day in range(1,6) for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)}
@@ -324,9 +322,6 @@ class Subject:
 
     def __hash__(self):
         return hash(self.name)
-
-    def get_teacher(self,clas:Class):
-        return self.teachers.get(clas.name)
 
     def get_time_num(self,time:Time):
         return self.time_list[time]
@@ -415,13 +410,13 @@ class Class:
                 subject=subjects[0]
                 data.loc[time.to_str(False,True),time.to_str(True,False)]=str(subject)
                 if cfg.show_teachers.value:
-                    data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"\n{subject.get_teacher(self)}"
+                    data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"\n{self.get_teacher(subject)}"
             else:
                 data.loc[time.to_str(False,True),time.to_str(True,False)]=f"【单】{subjects[0]}/"
                 data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"【双】{subjects[1]}"
                 if cfg.show_teachers.value:
-                    data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"\n【单】{subjects[0].get_teacher(self)}/"
-                    data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"【双】{subjects[1].get_teacher(self)}"
+                    data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"\n【单】{self.get_teacher(subjects[0])}/"
+                    data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"【双】{self.get_teacher(subjects[1])}"
         return data
 
 class Rule_type:
@@ -493,7 +488,7 @@ class LessonInfo:
         lessons=cfg.lessons_info.value
         subjects_str=cfg.subjects_info.value
         for subject in subjects_str:
-            self.subjects[subject]=Subject(subject,{})
+            self.subjects[subject]=Subject(subject)
         for teacher in cfg.teachers_info.value:
             self.teachers[teacher]=Teacher(teacher)
         for clas in lessons:
@@ -503,10 +498,9 @@ class LessonInfo:
             self.class_lst=[self.classes[clas] for clas in self.class_names]
             for subject in subjects_str:
                 if clas[subject+" - 任课老师"]:
-                    self.subjects[subject].teachers[class_name]=self.teachers[clas[subject+" - 任课老师"]]
+                    self.classes[class_name].teachers[subject]=self.teachers[clas[subject+" - 任课老师"]]
                     for i in range(int(clas[subject+" - 课时"])):
                         self.classes[class_name].left_subjects.append(self.subjects[subject])
-                    self.classes[class_name].teachers[subject]=self.teachers[clas[subject+" - 任课老师"]]
         for subject in self.subjects.values():
             subject.continue_times={clas:0 for clas in self.class_lst}
 
