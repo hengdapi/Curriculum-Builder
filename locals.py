@@ -11,9 +11,9 @@ from wr_settings import *
 
 sys.setrecursionlimit(10000)
 logging.basicConfig(format="[%(levelname)s] %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
-                    level=logging.INFO)
-#,filename="log.txt",filemode="w",encoding="utf-8"
-def lesson_to_str(lesson):
+                    level=logging.INFO,filename="log.txt",filemode="w",encoding="utf-8")
+#
+def lesson2str(lesson):
     """
     根据课程节次生成时间描述
 
@@ -29,6 +29,17 @@ def lesson_to_str(lesson):
         lesson -= cfg.morning_class_num.value
 
     return f"{time}第{lesson}节"
+
+def str2subject(subject_name:str)->Subject:
+    """
+    去除前缀，查找 Subject 对象
+    """
+    clean_name=subject_name
+    for prefix in ["【连】","【单】","【双】"]:
+        if clean_name.startswith(prefix):
+            clean_name=clean_name[len(prefix):]
+            break
+    return lesson_info.subjects[clean_name]
 
 def show_error(page,error:Exception):
     InfoBar.error("发生错误",str(error)+"\n错误信息已存入日志，可通过首页按钮反馈",duration=-1,parent=page)
@@ -187,7 +198,7 @@ class Time:
     def __hash__(self):
         return hash((self.day,self.lesson,self.week))
     def __str__(self):
-        return {"sin":"【单】","dou":"【双】","all":""}[self.week]+days[self.day]+lesson_to_str(self.lesson)
+        return {"sin":"【单】","dou":"【双】","all":""}[self.week]+days[self.day]+lesson2str(self.lesson)
 
     def to_str(self,day:bool,lesson:bool,week:bool=False):
         string=""
@@ -196,7 +207,7 @@ class Time:
         if day:
             string+=days[self.day]
         if lesson:
-            string+=lesson_to_str(self.lesson)
+            string+=lesson2str(self.lesson)
         return string
 
     @property
@@ -373,6 +384,11 @@ class Class:
         return self.left_subjects.count(subject)
 
     def add_lesson(self,time:Time,subject:Subject):
+        if subject in half_subjects and time.all:
+            if not self.get_lessons(time):
+                time=time.sin_week
+            else:
+                time=time.dou_week
         logging.debug(f"在 {self.name} 的 {time} 安排 {subject}")
         self.get_teacher(subject).add_lesson(time,self,subject)
         time=time.all_week
@@ -387,9 +403,21 @@ class Class:
         subject.add_lesson(self,time)
         self.left_subjects.remove(subject)
 
-    def remove_lesson(self,time:Time,subject:Subject):
-        subjects=self.timetable.get(time.all_week)
+    def remove_lesson(self,time:Time):
+        subjects=self.get_lessons(time)
         if subjects:
+            if time.all and len(subjects)==2:
+                self.remove_lesson(time.dou_week)
+                self.remove_lesson(time.sin_week)
+                return
+            if len(subjects)==1 and subjects[0] in half_subjects:
+                time=time.sin_week
+            if time.sin or time.all:
+                subject=subjects[0]
+            elif len(subjects)==2:
+                subject=subjects[1]
+            else:
+                return
             logging.debug(f"删除 {self} {time} 的 {subject}")
             self.get_teacher(subject).remove_lesson(time)
             time=time.all_week
@@ -400,7 +428,7 @@ class Class:
             self.left_subjects.append(subject)
 
     def get_lessons(self,time:Time)->list[Subject]|None:
-        return self.timetable.get(time)
+        return copy.copy(self.timetable.get(time.all_week))
 
     @property
     def timetable_dataframe(self)->pd.DataFrame:
@@ -411,7 +439,7 @@ class Class:
                 data.loc[time.to_str(False,True),time.to_str(True,False)]=str(subject)
                 if cfg.show_teachers.value:
                     data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"\n{self.get_teacher(subject)}"
-            else:
+            elif len(subjects)==2:
                 data.loc[time.to_str(False,True),time.to_str(True,False)]=f"【单】{subjects[0]}/"
                 data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"【双】{subjects[1]}"
                 if cfg.show_teachers.value:

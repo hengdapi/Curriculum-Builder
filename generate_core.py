@@ -144,8 +144,8 @@ class GenerateThread(QThread):
                                         self.dfs(clas,next_time)
                                     if self.finish:
                                         return
-                                    clas.remove_lesson(curr_time.dou_week,subject2)
-                        clas.remove_lesson(curr_time.sin_week,subject)
+                                    clas.remove_lesson(curr_time.dou_week)
+                        clas.remove_lesson(curr_time.sin_week)
                     # 连堂
                     elif subject not in half_subjects and check(clas, curr_time, subject):
                         add_continue=False
@@ -170,11 +170,9 @@ class GenerateThread(QThread):
                                 self.dfs(clas,next_time)
                             if self.finish:
                                 return
+                            clas.remove_lesson(curr_time)
                             if add_continue:
-                                clas.remove_lesson(curr_time,subject.to_continuous_lesson())
-                                clas.remove_lesson(next_time,subject.to_continuous_lesson())
-                            else:
-                                clas.remove_lesson(curr_time,subject.to_normal_lesson())
+                                clas.remove_lesson(next_time)
             else:
                 logging.debug(f"{curr_time}已存在课程")
                 if not last:

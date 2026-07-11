@@ -19,7 +19,7 @@ class RuleMessageBox(MessageBoxBase):
             self.yesButton.setText("添加规则")
             subheader("添加规则",self,self.viewLayout)
         self.cancelButton.setText("取消")
-        self.times=[day+lesson_to_str(lesson) for day in days[1:] for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)]
+        self.times=[day+lesson2str(lesson) for day in days[1:] for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)]
         self.string_elements={}
         self.string_layouts=[]
 
