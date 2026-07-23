@@ -24,6 +24,7 @@ class Settings(QConfig):
     reduce_continue=OptionsConfigItem("rules","reduce_continue",True,BoolValidator())
     average_subjects=OptionsConfigItem("rules","average_subjects",True,BoolValidator())
 
+    object_splitter_state=ConfigItem("ui","object_splitter_state",None)
     preview_splitter_state=ConfigItem("ui","preview_splitter_state",None)
     window_geometry=ConfigItem("ui","window_geometry",None)
 

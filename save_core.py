@@ -4,7 +4,7 @@ from PySide6.QtCore import Signal,QThread
 from locals import *
 from openpyxl import Workbook
 from openpyxl.styles import Font,Alignment,Border,Side
-import os
+import os,time
 
 black_side = Side(border_style="thin", color="000000")
 border = Border(left=black_side, right=black_side, top=black_side, bottom=black_side)
@@ -128,7 +128,7 @@ def save_grades_timetable(filename:str,ext:str):
                     cell.font=font
 
     wb.save(filename+"-各班课表（年级）"+ext)
-    logging.info("保存 各班课表（年级） 成功")
+    logging.info("导出 各班课表（年级） 成功")
 
 def save_total_grades_timetable(filename:str,ext:str):
     font=Font(cfg.text_font.value,cfg.text_size.value+4)
@@ -205,7 +205,7 @@ def save_total_grades_timetable(filename:str,ext:str):
                 cell.font=font
 
     wb.save(filename+"-班级总表（横）"+ext)
-    logging.info("保存 班级总表（横） 成功")
+    logging.info("导出 班级总表（横） 成功")
 
 def save_teachers_timetable(filename:str,ext:str):
     wb=Workbook()
@@ -278,11 +278,11 @@ def save_teachers_timetable(filename:str,ext:str):
                     cell.font=font
 
     wb.save(filename+"-教师课表（年级）"+ext)
-    logging.info("保存 教师课表（年级） 成功")
+    logging.info("导出 教师课表（年级） 成功")
 
 def save_total_teachers_timetable(filename:str,ext:str):
     font=Font(cfg.text_font.value,cfg.text_size.value+4)
-    total_column=2+(lesson_num+activity_num)*5
+    total_column=1+(lesson_num+activity_num)*5
     wb=Workbook()
     ws=wb.active
     ws.title=os.path.basename(filename)+"_总表"
@@ -350,7 +350,7 @@ def save_total_teachers_timetable(filename:str,ext:str):
                 cell.font=font
 
     wb.save(filename+"-教师总表（横）"+ext)
-    logging.info("保存 教师总表（横） 成功")
+    logging.info("导出 教师总表（横） 成功")
 
 class SaveThread(QThread):
     success=Signal()
@@ -360,15 +360,29 @@ class SaveThread(QThread):
         super().__init__(parent)
         self.filename=filename
         self.ext=ext
+        logging.debug(f"创建SaveThread实例")
 
     def run(self):
         try:
+            logging.info(f"开始导出课程表")
+            start_time = time.time()
+            
+            logging.debug("导出各班课表（年级）")
             save_grades_timetable(self.filename,self.ext)
+            
+            logging.debug("导出班级总表（横）")
             save_total_grades_timetable(self.filename,self.ext)
+            
+            logging.debug("导出教师课表（年级）")
             save_teachers_timetable(self.filename,self.ext)
+            
+            logging.debug("导出教师总表（横）")
             save_total_teachers_timetable(self.filename,self.ext)
+            
+            elapsed_time = time.time() - start_time
+            logging.info(f"课程表导出完成，耗时{elapsed_time:.2f}秒")
             self.success.emit()
         except Exception as estr:
             e=traceback.format_exc()
-            logging.critical(f"保存课程表出错：\n{e}")
+            logging.critical(f"导出课程表出错：\n{e}")
             self.error.emit(str(estr))

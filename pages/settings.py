@@ -6,6 +6,7 @@ from locals import *
 from style import *
 from wr_settings import *
 import shutil
+import traceback
 
 class RuleMessageBox(MessageBoxBase):
     def __init__(self,parent=None,edit=False,rule:Rule=None):
@@ -171,10 +172,13 @@ class Settings(QFrame):
         )
         # 处理上传的课程信息文件或使用已有配置
         if not user_info_file:
+            logging.debug("用户取消选择课程信息文件")
             if cfg.lessons_info.value!="":
                 cfg.lessons_info.value=pd.DataFrame(cfg.lessons_info.value).to_json(orient="records", lines=False, force_ascii=False)
             return
+        logging.info(f"选择课程信息文件: {user_info_file}")
         try:
+            logging.debug("开始解析课程信息文件")
             user_info=pd.read_excel(user_info_file)
             old_classes=[]
             rename_dict={}
@@ -195,16 +199,24 @@ class Settings(QFrame):
                 new_teachers|=set(user_info[subject+" - 任课老师"].to_list())
             new_teachers=[x for x in new_teachers if not pd.isna(x)]
 
+            logging.debug(f"解析完成：{len(old_classes)}个班级，{len(new_subjects)}个科目，{len(new_teachers)}个老师")
             diff_classes,diff_teachers,diff_subjects=diff_cfg(old_classes,new_teachers,new_subjects)
+            
+            if diff_classes or diff_teachers or diff_subjects:
+                logging.warning(f"检测到差异：{len(diff_classes)}个班级, {len(diff_teachers)}个老师, {len(diff_subjects)}个科目")
+            
             dialog=MessageBox("确认要更新课程信息表吗？","以下班级在新课程信息表中不存在：\n"+"、".join(diff_classes)+"\n以下老师在新课程信息表中不存在：\n"+"、".join(diff_teachers)+"\n以下科目在新课程信息表中不存在：\n"+"、".join(diff_subjects)+"\n与以上信息相关的设置将被删除",self.parent().parent().parent())
             if not dialog.exec():
+                logging.info("用户取消更新课程信息")
                 return
+            
             cfg.lessons_info.value=new_lessons_info
             cfg.subjects_info.value=new_subjects
             cfg.teachers_info.value=new_teachers
             del_cfg_diff(diff_classes,diff_teachers,diff_subjects)
             save_settings()
             self.show_lessons_info()
+            logging.info("课程信息表更新成功，准备重启应用")
             InfoBar.success("课程信息表更新成功，应用将自动重启","",parent=self,duration=1500)
             restart_app(1500)
         except Exception as error:
@@ -217,6 +229,7 @@ class Settings(QFrame):
         self.del_rule_button.setEnabled(True)
 
     def add_rule(self):
+        logging.info("用户点击添加规则按钮")
         rule_dialog=RuleMessageBox(self.parent().parent().parent())
         if rule_dialog.exec():
             new_rule=rule_dialog.new_rule
@@ -227,10 +240,14 @@ class Settings(QFrame):
             item.setData(Qt.UserRole,new_rule)
             cfg.rules.value.append(new_rule.to_dict())
             save_settings()
+            logging.info("成功添加规则")
+        else:
+            logging.debug("用户取消添加规则")
 
     def edit_rule(self):
         curr_item=self.rule_list.selectedItems()[0]
         curr_rule=curr_item.data(Qt.UserRole)
+        logging.info("用户编辑规则")
         rule_dialog=RuleMessageBox(self.parent().parent().parent(),True,curr_rule)
         if rule_dialog.exec():
             new_rule=rule_dialog.new_rule
@@ -240,16 +257,22 @@ class Settings(QFrame):
             cfg.rules.value.remove(curr_rule.to_dict())
             cfg.rules.value.append(new_rule.to_dict())
             save_settings()
+            logging.info("规则编辑成功")
+        else:
+            logging.debug("用户取消编辑规则")
 
     def del_rule(self):
         try:
             selected_rule=self.rule_list.selectedItems()[0]
-            lesson_info.rules.remove(selected_rule.data(Qt.UserRole))
+            rule_data=selected_rule.data(Qt.UserRole)
+            logging.info("用户删除规则")
+            lesson_info.rules.remove(rule_data)
             self.rule_list.takeItem(self.rule_list.row(selected_rule))
             self.del_rule_button.setEnabled(bool(len(lesson_info.rules)))
             self.edit_rule_button.setEnabled(bool(len(lesson_info.rules)))
-            cfg.rules.value.remove(selected_rule.data(Qt.UserRole).to_dict())
+            cfg.rules.value.remove(rule_data.to_dict())
             save_settings()
+            logging.info("规则删除成功")
         except Exception as error:
             e=traceback.format_exc()
             logging.error(f"删除规则时出错：\n{e}")
@@ -418,17 +441,23 @@ class Settings(QFrame):
     def export_settings(self):
         filename,_=QFileDialog.getSaveFileName(self,"导出设置","","JSON 文件(*.json)")
         if not filename:
+            logging.debug("用户取消导出设置")
             return
+        logging.info(f"导出设置文件: {filename}")
         shutil.copy2("settings.json",filename)
         InfoBar.success("成功导出设置",f"已导出至{filename}",parent=self)
+        logging.info("设置导出成功")
 
     def import_settings(self):
         filename,_=QFileDialog.getOpenFileName(self,"导入设置","","JSON 文件(*.json)")
         if not filename:
+            logging.debug("用户取消导入设置")
             return
+        logging.info(f"导入设置文件: {filename}")
         shutil.copy2(filename,"settings.json")
         InfoBar.success("成功导入设置",f"已导入{filename}",parent=self,duration=3000)
         InfoBar.info("应用将自动重启以使设置生效","",parent=self,duration=1500)
+        logging.info("设置导入成功，准备重启应用")
         restart_app(1500)
 
     def __init__(self,parent=None):
@@ -553,7 +582,7 @@ class Settings(QFrame):
             rule_list_layout.addStretch(1)
 
             self.rule_list=RoundListWidget()
-            self.rule_list.setFixedHeight(200)
+            self.rule_list.setFixedHeight(230)
             self.rule_list.setDragEnabled(True)
             self.rule_list.setDropIndicatorShown(True)
             self.rule_list.setDragDropMode(QAbstractItemView.InternalMove)

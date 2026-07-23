@@ -4,8 +4,9 @@ from save_core import SaveThread
 from PySide6.QtCore import Qt,QByteArray
 from PySide6.QtWidgets import QFrame
 from PySide6 import QtGui
-from pages.timetable_widgets import TimeTableWidget,DraggableLessonCard,LessonStoragePane
+from pages.timetable_widgets import TimeTableWidget,DraggableLessonCard,LessonStoragePane,widget_with_badge
 import time
+import traceback
 
 # 读取配置文件
 cfg=load_settings()
@@ -39,7 +40,7 @@ class Generate(QFrame):
         add_widget(self.generate_button,self.operation_layout)
 
         self.save_button=PrimaryPushButton()
-        self.save_button.setText("保存课程表")
+        self.save_button.setText("导出课程表")
         self.save_button.setIcon(FluentIcon.SAVE)
         self.save_button.setFixedSize(160,40)
         self.save_button.clicked.connect(self.save_timetable)
@@ -55,8 +56,9 @@ class Generate(QFrame):
         add_widget(self.log_label,self.layout,0)
 
         # 课程表预览
-        self.preview_splitter=Splitter(Qt.Horizontal)
-        add_widget(self.preview_splitter,self.layout,0)
+        self.object_splitter=Splitter(Qt.Horizontal)
+        self.object_splitter.splitterMoved.connect(self.on_splitter_moved)
+        add_widget(self.object_splitter,self.layout,0)
 
         self.object_pane=QWidget()
         self.object_layout=QVBoxLayout(self.object_pane)
@@ -74,11 +76,14 @@ class Generate(QFrame):
 
         self.object_tree=TreeWidget(self)
         self.object_tree.setHeaderHidden(True)
-        self.show_object_tree()
         self.object_tree.clicked.connect(self.show_timetable)
         add_widget(self.object_tree,self.object_layout,0)
         self.object_search.textChanged.connect(self.filter_object_tree)
-        self.preview_splitter.addWidget(self.object_pane)
+        self.object_splitter.addWidget(self.object_pane)
+
+        self.preview_splitter=Splitter(Qt.Horizontal)
+        self.preview_splitter.splitterMoved.connect(self.on_splitter_moved)
+        add_widget(self.preview_splitter,self.layout,0)
 
         self.timetable_pane=QWidget()
         self.timetable_layout=QVBoxLayout(self.timetable_pane)
@@ -123,20 +128,19 @@ class Generate(QFrame):
         add_widget(self.teacher2_timetable_preview,self.teacher_timetable_layout,0)
 
         self.preview_splitter.addWidget(self.teacher_timetable_pane)
-        self.preview_splitter.splitterMoved.connect(self.save_splitter_state)
-        state_b64=cfg.preview_splitter_state.value
-        if state_b64:
-            byte_array=QByteArray.fromBase64(state_b64.encode())
+        self.object_splitter.addWidget(self.preview_splitter)
+        if cfg.object_splitter_state.value:
+            byte_array=QByteArray.fromBase64(cfg.object_splitter_state.value.encode())
+            self.object_splitter.restoreState(byte_array)
+        if cfg.preview_splitter_state.value:
+            byte_array=QByteArray.fromBase64(cfg.preview_splitter_state.value.encode())
             self.preview_splitter.restoreState(byte_array)
-        else:
-            self.preview_splitter.setStretchFactor(0,2)
-            self.preview_splitter.setStretchFactor(1,7)
-            self.preview_splitter.setStretchFactor(2,6)
 
-        self.hidden_widgets=[self.save_button,self.preview_splitter]
+        self.hidden_widgets=[self.save_button,self.preview_splitter,self.object_splitter]
         self.hide_widgets()
         # === 设置滚动区域内容 ===
         self.layout.addStretch(1)
+        self.first_generate=True
         main_layout.addWidget(view)
 
     def hide_widgets(self):
@@ -149,13 +153,29 @@ class Generate(QFrame):
 
     def show_object_tree(self):
         self.object_tree.clear()
-        self.classes_top_item=QTreeWidgetItem(["班级课表"])
+        self.classes_top_item=QTreeWidgetItem()
+        self.classes_top_item.setData(0,Qt.UserRole,"班级课表")
+        self.total_left_subjects=0
+        self.class_items:dict[QTreeWidgetItem,list[QTreeWidgetItem]]={}
         for grade,classes in cfg.grades_info.value.items():
-            grade_item=QTreeWidgetItem([grade])
-            for clas in classes:
-                grade_item.addChild(QTreeWidgetItem([clas]))
+            grade_item=QTreeWidgetItem()
+            grade_item.setData(0,Qt.UserRole,grade)
+            self.class_items[grade_item]=[]
+            grade_left_subjects=0
+            for class_name in classes:
+                class_item=QTreeWidgetItem()
+                class_item.setData(0,Qt.UserRole,class_name)
+                grade_item.addChild(class_item)
+                self.class_items[grade_item].append(class_item)
+                clas=lesson_info.classes[class_name]
+                self.object_tree.setItemWidget(class_item,0,widget_with_badge(class_name,len(clas.left_subjects),self.object_tree.font()))
+
+                grade_left_subjects+=len(clas.left_subjects)
+                self.total_left_subjects+=len(clas.left_subjects)
             self.classes_top_item.addChild(grade_item)
+            self.object_tree.setItemWidget(grade_item,0,widget_with_badge(grade,grade_left_subjects,self.object_tree.font()))
         self.object_tree.addTopLevelItem(self.classes_top_item)
+        self.object_tree.setItemWidget(self.classes_top_item,0,widget_with_badge("班级课表",self.total_left_subjects,self.object_tree.font()))
 
         self.teachers_top_item=QTreeWidgetItem(["教师课表"])
         for teacher in cfg.teachers_info.value:
@@ -165,17 +185,31 @@ class Generate(QFrame):
         self.teacher_total_item=QTreeWidgetItem(["教师总表"])
         self.object_tree.addTopLevelItems([self.class_total_item,self.teacher_total_item])
 
+    def refresh_object_tree(self):
+        self.total_left_subjects=0
+        for grade_item,class_items in self.class_items.items():
+            grade_left_subjects=0
+            grade_name=grade_item.data(0,Qt.UserRole)
+            for class_item in class_items:
+                class_name=class_item.data(0,Qt.UserRole)
+                clas=lesson_info.classes[class_name]
+                grade_left_subjects+=len(clas.left_subjects)
+                self.total_left_subjects+=len(clas.left_subjects)
+                self.object_tree.setItemWidget(class_item,0,widget_with_badge(class_name,len(clas.left_subjects),self.object_tree.font()))
+            self.object_tree.setItemWidget(grade_item,0,widget_with_badge(grade_name,grade_left_subjects,self.object_tree.font()))
+        self.object_tree.setItemWidget(self.classes_top_item,0,widget_with_badge("班级课表",self.total_left_subjects,self.object_tree.font()))
+
     def filter_object_tree(self,keyword:str):
         keyword=str(keyword).strip().lower()
         # 班级课表：匹配班级或年级名称
         grade_matches_any=False
         for g in range(self.classes_top_item.childCount()):
             grade_item=self.classes_top_item.child(g)
-            grade_match=keyword in grade_item.text(0).lower()
+            grade_match=keyword in grade_item.data(0,Qt.UserRole).lower()
             class_any_match=False
             for c in range(grade_item.childCount()):
                 class_item=grade_item.child(c)
-                class_match=keyword in class_item.text(0).lower() or grade_match
+                class_match=keyword in class_item.data(0,Qt.UserRole).lower() or grade_match
                 class_item.setHidden(not class_match)
                 if class_match:
                     class_any_match=True
@@ -211,15 +245,40 @@ class Generate(QFrame):
                 self.classes_top_item.child(g).setExpanded(False)
             self.teachers_top_item.setExpanded(False)
 
-    def save_splitter_state(self):
-        state=self.preview_splitter.saveState()  # QByteArray
-        state_base64=bytes(state.toBase64()).decode()  # 转为普通字符串（Base64）
-        cfg.preview_splitter_state.value=state_base64
+    def set_timetables_size(self,resize=True):
+        QApplication.processEvents()
+        if resize:
+            for row in range(self.timetable_preview.rowCount()):
+                self.timetable_preview.setRowHeight(row,(self.timetable_preview.height()-40)//self.timetable_preview.rowCount())
+            for col in range(self.timetable_preview.columnCount()):
+                self.timetable_preview.setColumnWidth(col,(self.timetable_preview.width()-90)//self.timetable_preview.columnCount())
+
+            for row in range(self.teacher_timetable_preview.rowCount()):
+                self.teacher_timetable_preview.setRowHeight(row,40)
+            for col in range(self.teacher_timetable_preview.columnCount()):
+                self.teacher_timetable_preview.setColumnWidth(col,self.teacher_timetable_preview.width()//self.teacher_timetable_preview.columnCount())
+
+            for row in range(self.teacher2_timetable_preview.rowCount()):
+                self.teacher2_timetable_preview.setRowHeight(row,40)
+            for col in range(self.teacher2_timetable_preview.columnCount()):
+                self.teacher2_timetable_preview.setColumnWidth(col,self.teacher2_timetable_preview.width()//self.teacher2_timetable_preview.columnCount())
+        else:
+            for row in range(self.timetable_preview.rowCount()):
+                self.timetable_preview.setRowHeight(row,60)
+            for col in range(self.timetable_preview.columnCount()):
+                self.timetable_preview.setColumnWidth(col,110)
+
+    def on_splitter_moved(self):
+        cfg.preview_splitter_state.value=bytes(self.preview_splitter.saveState().toBase64()).decode()
+        cfg.object_splitter_state.value=bytes(self.object_splitter.saveState().toBase64()).decode()
         save_settings()
+        self.set_timetables_size()
 
     def generate_timetable(self):
         try:
             logging.info("生成按钮被点击")
+            logging.debug(f"当前配置：{len(lesson_info.class_names)}个班级，{len(lesson_info.subjects)}个科目，{len(lesson_info.teachers)}个老师")
+            
             # 禁用生成按钮防止重复点击
             self.generate_button.setEnabled(False)
             self.progress_bar.show()
@@ -227,6 +286,9 @@ class Generate(QFrame):
             self.progress_bar.setMaximum(len(lesson_info.class_names))
             self.log_label.show()
             self.hide_widgets()
+            if not self.first_generate:
+                self.layout.addStretch(1)
+                self.first_generate=False
 
             # 创建并启动线程
             self.generate_start_time=time.time()
@@ -234,6 +296,7 @@ class Generate(QFrame):
             self.generate_thread.finished_signal.connect(self.on_generation_finished)
             self.generate_thread.progress_signal.connect(self.on_progress_update)
             self.generate_thread.start()
+            logging.info("课程表生成线程已启动")
         except Exception as error:
             e=traceback.format_exc()
             logging.critical(f"生成课程表出错：\n{e}")
@@ -263,7 +326,7 @@ class Generate(QFrame):
                 return True
         return False
 
-    def show_check_result(self,source_subjects:list[Subject],curr_time:Time|None,exchange:bool=True):
+    def show_check_result(self,source_subjects:list[Subject],source_time:Time|None,exchange:bool=True):
         clas=self.preview_object
         rows=self.timetable_preview.rowCount()
         cols=self.timetable_preview.columnCount()
@@ -273,17 +336,19 @@ class Generate(QFrame):
                 target_subjects=clas.get_lessons(target_time)
                 # 判断能否放置
                 can_place=False
-                if exchange and curr_time:
+                if source_subjects[0].continuous or (source_time,source_subjects[0]) in set_lessons:
+                    pass
+                elif exchange and source_time:
                     # 交换模式：目标不能是自身，且要通过 check_exchange
-                    if not (i==curr_time.lesson-1 and j==curr_time.day-1):
-                        if target_subjects and self.check_exchange(clas,curr_time,target_time,source_subjects,target_subjects):
+                    if not (i==source_time.lesson-1 and j==source_time.day-1):
+                        if target_subjects and self.check_exchange(clas,source_time,target_time,source_subjects,target_subjects):
                             can_place=True
                         # 目标是空位：直接检查能否放置
                         elif not target_subjects:
                             if len(source_subjects)==1:
                                 can_place=check(clas,target_time,source_subjects[0])
                             elif len(source_subjects)==2:
-                                can_place=check(clas,target_time,source_subjects[0]) and check(clas,target_time,source_subjects[1])
+                                can_place=check(clas,target_time.sin_week,source_subjects[0]) and check(clas,target_time.dou_week,source_subjects[1])
                 else:
                     # 添加模式（从暂存区拖来）
                     if target_subjects:
@@ -311,8 +376,8 @@ class Generate(QFrame):
                 else:
                     item.setBackground(QColor(255,150,150))
                     item.setToolTip("不可放置")
-        if exchange and curr_time:
-            source_item=self.timetable_preview.item(curr_time.lesson-1,curr_time.day-1)
+        if exchange and source_time:
+            source_item=self.timetable_preview.item(source_time.lesson-1,source_time.day-1)
             if source_item:
                 source_item.setBackground(QColor(255,255,200))
                 source_item.setToolTip("当前选中（再次点击可取消）")
@@ -346,12 +411,6 @@ class Generate(QFrame):
                 teacher_item=self.teacher_timetable_preview.item(curr_time.lesson-1,curr_time.day-1)
                 if teacher_item:
                     teacher_item.setBackground(QColor(255,255,200))
-            # 手动设置行高
-            for row in range(self.teacher_timetable_preview.rowCount()):
-                self.teacher_timetable_preview.setRowHeight(row,40)
-            # 手动设置列宽
-            for col in range(self.teacher_timetable_preview.columnCount()):
-                self.teacher_timetable_preview.setColumnWidth(col,80)
             if len(source_subjects)==2:
                 teacher2=clas.get_teacher(source_subjects[1])
                 display_df_in_table(self.teacher2_timetable_preview,teacher2.timetable_dataframe)
@@ -361,18 +420,13 @@ class Generate(QFrame):
                     teacher_item=self.teacher2_timetable_preview.item(curr_time.lesson-1,curr_time.day-1)
                     if teacher_item:
                         teacher_item.setBackground(QColor(255,255,200))
-                # 手动设置行高
-                for row in range(self.teacher2_timetable_preview.rowCount()):
-                    self.teacher2_timetable_preview.setRowHeight(row,40)
-                # 手动设置列宽
-                for col in range(self.teacher2_timetable_preview.columnCount()):
-                    self.teacher2_timetable_preview.setColumnWidth(col,80)
                 self.teacher2_timetable_subheader.show()
                 self.teacher2_timetable_preview.show()
             else:
                 self.teacher2_timetable_subheader.hide()
                 self.teacher2_timetable_preview.hide()
             self.teacher_timetable_pane.show()
+            self.set_timetables_size()
         except Exception as error:
             e=traceback.format_exc()
             logging.critical(f"点击课程表出错：\n{e}")
@@ -456,9 +510,11 @@ class Generate(QFrame):
             clas=self.preview_object
             target_time=Time(col+1,row+1)
             source_subject=dragged_card.subject
+            logging.info(f"将暂存课程拖入课表位置：第{target_time.day}天第{target_time.lesson}节")
+            
             # 先检查新课程能否放入（不管目标位置是否已有课程）
             if not self.check_result[target_time]:
-                logging.debug(f"暂存课程 {source_subject} 不能放入 {clas.name} 的 {target_time}")
+                logging.debug(f"暂存课程不能放入目标位置")
                 return
             # 目标位置已有课程：先把原课程移入暂存区
             target_subjects=clas.get_lessons(target_time)
@@ -472,8 +528,10 @@ class Generate(QFrame):
                 self.show_stored_lesson_cards()
                 # 添加新课程
                 clas.add_lesson(target_time,source_subject.to_normal_lesson())
+            self.refresh_object_tree()
             self.show_timetable()
             self.show_lesson_details(clas.get_lessons(target_time),target_time)
+            logging.info(f"暂存课程成功放入课表")
         except Exception as error:
             e=traceback.format_exc()
             logging.critical(f"添加暂存课程出错：\n{e}")
@@ -491,6 +549,8 @@ class Generate(QFrame):
             clas=self.preview_object
             target_time=Time(col+1,row+1)
             source_time=Time(source_item.column()+1,source_item.row()+1)
+            logging.info(f"移动课程：从第{source_time.day}天第{source_time.lesson}节 到 第{target_time.day}天第{target_time.lesson}节")
+            
             # 目标位置已有课程：不应走此分支（已有课程走 exchange_lesson）
             if clas.get_lessons(target_time):
                 return
@@ -498,12 +558,8 @@ class Generate(QFrame):
             if not source_subjects:
                 return
             # 检查能否放下
-            if len(source_subjects)==1:
-                can_place=check(clas,target_time,source_subjects[0])
-            else:
-                can_place=check(clas,target_time,source_subjects[0]) and check(clas,target_time,source_subjects[1])
-            if not can_place:
-                logging.info(f"{[s.name for s in source_subjects]} 不能从 {source_time} 移动到 {target_time}")
+            if not self.check_result[target_time]:
+                logging.info(f"课程不能移动到目标位置")
                 return
             # 先移除源位置，再添加到目标位置
             clas.remove_lesson(source_time)
@@ -511,6 +567,7 @@ class Generate(QFrame):
                 clas.add_lesson(target_time,s.to_normal_lesson())
             self.show_timetable()
             self.show_lesson_details(source_subjects,target_time)
+            logging.info(f"课程移动成功")
         except Exception as error:
             e=traceback.format_exc()
             logging.critical(f"移动课程出错：\n{e}")
@@ -527,6 +584,7 @@ class Generate(QFrame):
             else:
                 self.preview_object.remove_lesson(curr_time)
             self.show_timetable()
+            self.refresh_object_tree()
         except RuntimeError:
             pass
 
@@ -542,6 +600,9 @@ class Generate(QFrame):
             curr_subjects=clas.get_lessons(curr_time)
             target_time=Time(target_item.column()+1,target_item.row()+1)
             target_subjects=clas.get_lessons(target_time)
+            
+            logging.info(f"交换课程：第{curr_time.day}天第{curr_time.lesson}节 与 第{target_time.day}天第{target_time.lesson}节")
+            
             if not self.check_result[target_time]:
                 return
             if len(curr_subjects)==1 and curr_subjects[0] in half_subjects and len(target_subjects)==1 and target_subjects[0] in half_subjects:
@@ -566,6 +627,7 @@ class Generate(QFrame):
             self.show_timetable()
             self.timetable_preview.setCurrentCell(target_time.lesson-1,target_time.day-1)
             self.show_lesson_details(curr_subjects,target_time)
+            logging.info(f"课程交换成功")
         except Exception as error:
             e=traceback.format_exc()
             logging.critical(f"交换课程出错：\n{e}")
@@ -577,7 +639,7 @@ class Generate(QFrame):
             return
         try:
             self.teacher_timetable_pane.hide()
-            self.timetable_pane.show()
+            self.preview_splitter.show()
             if object_item.text(0)=="班级总表":
                 self.preview_mode=2
                 self.timetable_preview.setDragEnabled(False)
@@ -585,6 +647,7 @@ class Generate(QFrame):
                 display_df_in_table(self.timetable_preview,class_total_dataframe())
                 self.store_lesson_subheader.hide()
                 self.lesson_storage_pane.hide()
+                self.set_timetables_size(False)
             elif object_item.text(0)=="教师总表":
                 self.preview_mode=3
                 self.timetable_preview.setDragEnabled(False)
@@ -592,6 +655,7 @@ class Generate(QFrame):
                 display_df_in_table(self.timetable_preview,teacher_total_dataframe())
                 self.store_lesson_subheader.hide()
                 self.lesson_storage_pane.hide()
+                self.set_timetables_size(False)
             elif object_item.parent() is not None and object_item.parent().text(0) =="教师课表":
                 self.preview_mode=1
                 self.timetable_preview.setDragEnabled(False)
@@ -599,25 +663,21 @@ class Generate(QFrame):
                 self.lesson_storage_pane.hide()
                 self.preview_object=lesson_info.teachers[object_item.text(0)]
                 self.timetable_subheader.setText(f"{self.preview_object.name}老师 课程表")
+                self.set_timetables_size()
                 display_df_in_table(self.timetable_preview,self.preview_object.timetable_dataframe)
-            elif object_item.parent().parent() is not None and object_item.parent().parent().text(0) =="班级课表":
+            elif object_item.parent().parent() is not None and object_item.parent().parent().data(0,Qt.UserRole) =="班级课表":
                 self.preview_mode=0
                 self.timetable_preview.setDragEnabled(True)
-                self.preview_object=lesson_info.classes[object_item.text(0)]
+                self.preview_object=lesson_info.classes[object_item.data(0,Qt.UserRole)]
                 self.timetable_subheader.setText(f"{self.preview_object} 课程表")
                 display_df_in_table(self.timetable_preview,self.preview_object.timetable_dataframe)
                 self.show_stored_lesson_cards()
+                self.set_timetables_size()
             else:
                 raise ValueError("未知的课程表类型")
         except:
-            self.timetable_pane.hide()
+            self.preview_splitter.hide()
             return
-        # 手动设置行高
-        for row in range(self.timetable_preview.rowCount()):
-            self.timetable_preview.setRowHeight(row, 60)
-        # 手动设置列宽
-        for col in range(self.timetable_preview.columnCount()):
-            self.timetable_preview.setColumnWidth(col, 110)
 
     def on_generation_finished(self):
         logging.info("排课已完成")
@@ -626,6 +686,8 @@ class Generate(QFrame):
         self.log_label.hide()
         self.progress_bar.hide()
         self.show_widgets()
+        self.preview_splitter.hide()
+        self.show_object_tree()
         self.show_timetable()
         self.layout.takeAt(self.layout.count()-1)
 
@@ -641,12 +703,20 @@ class Generate(QFrame):
             show_error(self,error)
 
     def save_timetable(self):
-        filename,_=QFileDialog.getSaveFileName(self,"保存课程表","","Microsoft Excel 工作表(*.xlsx);;Microsoft Excel 97-2003 工作表(*.xls)")
+        logging.info("导出按钮被点击")
+        if self.total_left_subjects:
+            logging.warning(f"暂存区还有{self.total_left_subjects}门课程")
+            dialog=MessageBox("确认导出课程表吗？",f"班级课表中还有{self.total_left_subjects}门课程位于暂存区中，是否确认导出？",self.parent().parent().parent())
+            if not dialog.exec():
+                logging.info("用户取消导出（暂存区有课程）")
+                return
+        filename,_=QFileDialog.getSaveFileName(self,"导出课程表","","Microsoft Excel 工作表(*.xlsx);;Microsoft Excel 97-2003 工作表(*.xls)")
         if not filename:
+            logging.debug("用户取消导出")
             return
-        logging.info(f"保存课程表文件名：{filename}")
+        logging.info(f"导出课程表文件名：{filename}")
 
-        self.save_infobar=InfoBar(InfoBarIcon.INFORMATION,"正在保存课程表，请稍候...","",parent=self,duration=-1)
+        self.save_infobar=InfoBar(InfoBarIcon.INFORMATION,"正在导出课程表，请稍候...","",parent=self,duration=-1)
         self.save_progress=IndeterminateProgressBar()
         self.save_infobar.addWidget(self.save_progress)
         self.save_infobar.show()
@@ -656,11 +726,12 @@ class Generate(QFrame):
         save_thread.success.connect(self.on_save_success)
         save_thread.error.connect(self.on_save_error)
         save_thread.start()
+        logging.info("导出线程已启动")
 
     def on_save_success(self):
         self.save_infobar.close()
-        InfoBar.success("课程表保存成功！","",parent=self,duration=-1)
+        InfoBar.success("课程表导出成功！","",parent=self,duration=-1)
 
     def on_save_error(self,error):
         self.save_infobar.close()
-        InfoBar.error("课程表保存失败！",error,parent=self,duration=-1)
+        InfoBar.error("课程表导出失败！",error,parent=self,duration=-1)

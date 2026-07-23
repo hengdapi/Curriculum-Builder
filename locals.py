@@ -10,9 +10,15 @@ from qfluentwidgets_pro import TableWidget
 from wr_settings import *
 
 sys.setrecursionlimit(10000)
-logging.basicConfig(format="[%(levelname)s] %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
-                    level=logging.INFO,filename="log.txt",filemode="w",encoding="utf-8")
-#
+logging.basicConfig(format="[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
+                    level=logging.DEBUG,
+                    filename="log.txt",
+                    filemode="a",
+                    encoding="utf-8")
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter("[%(levelname)s] %(filename)s %(funcName)s %(lineno)d行:\t%(message)s"))
+logging.getLogger().addHandler(console_handler)
 def lesson2str(lesson):
     """
     根据课程节次生成时间描述
@@ -45,33 +51,35 @@ def show_error(page,error:Exception):
     InfoBar.error("发生错误",str(error)+"\n错误信息已存入日志，可通过首页按钮反馈",duration=-1,parent=page)
 
 def restart_app(delay_ms=100):
-    """
-    重启当前应用程序（无黑窗口 · 鲁棒版）
-    机制：
-    1. 用 DETACHED_PROCESS 完全分离新进程（父进程退出不影响子进程）
-    2. 用 CREATE_NO_WINDOW 隐藏任何控制台窗口
-    3. 新进程启动时在 log.txt 写入一条"新进程启动成功"的诊断记录
-    """
     import threading, time
 
-    # ===== 路径在调用时就计算好，不受后续 cwd 变化影响 =====
-    if getattr(sys, 'frozen', False):
-        # 打包后：sys.executable 就是 .exe 本身
+    # ===== 判断是否为打包后的 exe =====
+    # Nuitka 不设置 sys.frozen，但 main.dist 里的 exe 名就是程序名
+    exe_basename = os.path.basename(sys.executable).lower()
+    is_packaged = (
+        getattr(sys, 'frozen', False)           # PyInstaller
+        or hasattr(sys, 'nuitka_version')        # Nuitka (部分版本)
+        or '__compiled__' in globals()           # Nuitka
+        or (exe_basename.endswith('.exe') and 'python' not in exe_basename)  # 兜底：可执行文件不是 python.exe
+    )
+
+    if is_packaged:
+        # 打包后：sys.executable 就是你的程序 exe
         program = sys.executable
         args = []
         cwd = os.path.dirname(program)
     else:
-        # 开发环境
-        program = sys.executable.replace("python.exe", "pythonw.exe")  # 用 pythonw 就无黑窗口
+        # 开发环境：用 pythonw.exe（无黑窗口）
+        program = sys.executable.replace("python.exe", "pythonw.exe")
         if not os.path.exists(program):
-            program = sys.executable  # 如果找不到 pythonw，退回 python
+            program = sys.executable
         script_path = os.path.abspath(sys.argv[0])
         args = [script_path]
         cwd = os.path.dirname(script_path)
 
-    logging.info(f"[重启] program={program} | args={args} | cwd={cwd}")
+    logging.info(f"[重启] is_packaged={is_packaged} | program={program} | args={args} | cwd={cwd}")
 
-    # ===== 关键：用 Windows 分离进程标志，完全脱离旧进程 =====
+    # ===== 后面 DETACHED_PROCESS 等部分保持不变 =====
     DETACHED_PROCESS = 0x00000008
     CREATE_NO_WINDOW = 0x08000000
 
@@ -88,16 +96,14 @@ def restart_app(delay_ms=100):
         logging.info(f"[重启] 新进程 PID={proc.pid}，启动成功")
     except Exception as e:
         logging.error(f"[重启] 启动新进程失败: {e}")
-        # 兜底：用 cmd /c start（最可靠，但可能有瞬时窗口闪烁）
         try:
             start_cmd = f'cmd.exe /c "cd /d \"{cwd}\" & start \"\" \"{program}\" {" ".join(args)}"'
             subprocess.Popen(start_cmd, shell=True)
-            logging.info(f"[重启] 兜底方案启动: {start_cmd}")
+            logging.info(f"[重启] 兜底方案启动")
         except Exception as e2:
             logging.error(f"[重启] 兜底也失败: {e2}")
         os._exit(0)
 
-    # ===== 延迟后强制退出旧进程 =====
     def _force_exit():
         time.sleep(delay_ms / 1000.0)
         logging.info("[重启] 旧进程退出")
@@ -513,26 +519,41 @@ class LessonInfo:
         self.class_names:list[str]=[]
         self.class_lst:list[Class]=[]
         logging.info("正在解析课程信息...")
+        
         lessons=cfg.lessons_info.value
         subjects_str=cfg.subjects_info.value
+        teachers_str=cfg.teachers_info.value
+        
+        logging.debug(f"课程信息：{len(lessons)}个班级，{len(subjects_str)}个科目，{len(teachers_str)}个老师")
+        
         for subject in subjects_str:
             self.subjects[subject]=Subject(subject)
-        for teacher in cfg.teachers_info.value:
+        logging.debug(f"已创建 {len(self.subjects)} 个科目对象")
+        
+        for teacher in teachers_str:
             self.teachers[teacher]=Teacher(teacher)
-        for clas in lessons:
+        logging.debug(f"已创建 {len(self.teachers)} 个教师对象")
+        
+        for idx, clas in enumerate(lessons):
             class_name=clas["班级"]
             self.classes[class_name]=Class(class_name,{})
             self.class_names=list(self.classes.keys())
-            self.class_lst=[self.classes[clas] for clas in self.class_names]
+            self.class_lst=[self.classes[clas_name] for clas_name in self.class_names]
+            total_lessons=0
             for subject in subjects_str:
                 if clas[subject+" - 任课老师"]:
                     self.classes[class_name].teachers[subject]=self.teachers[clas[subject+" - 任课老师"]]
-                    for i in range(int(clas[subject+" - 课时"])):
+                    lesson_count=int(clas[subject+" - 课时"])
+                    for i in range(lesson_count):
                         self.classes[class_name].left_subjects.append(self.subjects[subject])
+                    total_lessons+=lesson_count
+            logging.debug(f"解析班级 {idx+1}/{len(lessons)}：{len(self.classes[class_name].teachers)} 位任课老师，{total_lessons} 节课")
+        
         for subject in self.subjects.values():
             subject.continue_times={clas:0 for clas in self.class_lst}
 
         self.rules: list[Rule]=[]
+        logging.info("课程信息解析完成")
 lesson_info=LessonInfo()
 
 priority_subjects:dict[Time,list[Subject]]={}

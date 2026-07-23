@@ -6,13 +6,13 @@
 - DraggableLessonCard    暂存区的可拖拽卡片（支持点击/拖拽激活课表高亮）
 """
 
-from PySide6.QtCore import Qt, Signal, QMimeData, QPoint
+from PySide6.QtCore import Signal, QMimeData, QPoint
 from PySide6.QtGui import (
-    QDropEvent, QDragMoveEvent, QDragEnterEvent, QPixmap, QPainter, QBrush,
-    QColor, QDrag
+    QDropEvent,QDragMoveEvent,QDragEnterEvent,QPixmap,QPainter,QBrush,
+    QColor,QDrag,QFont
 )
-from PySide6.QtWidgets import QFrame, QVBoxLayout
-
+from PySide6.QtWidgets import QFrame,QVBoxLayout,QWidget,QHBoxLayout
+from qfluentwidgets_pro import InfoBadge
 from locals import *
 from style import CardWidget, BodyLabel, TableWidget
 from PySide6.QtWidgets import QTableWidgetItem, QAbstractItemView
@@ -270,3 +270,18 @@ class DraggableLessonCard(CardWidget):
 
         painter.end()
         return pixmap
+
+def widget_with_badge(text:str,number:int,font:QFont|None=None)->QWidget:
+    item_widget=QWidget()
+    item_layout=QHBoxLayout(item_widget)
+    item_layout.setContentsMargins(0,0,0,0)
+    name_label=BodyLabel()
+    if font:
+        name_label.setFont(font)
+    name_label.setText(text)
+    item_layout.addWidget(name_label)
+    if number:
+        badge=InfoBadge.error(number)
+        item_layout.addWidget(badge)
+    item_layout.addStretch(1)
+    return item_widget

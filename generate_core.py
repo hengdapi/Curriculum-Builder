@@ -1,39 +1,39 @@
-import random,time
+import random,time,traceback
 from locals import *
 from PySide6.QtCore import QThread,Signal
 
 def check(clas: Class,time: Time,subject: Subject) -> bool:
     try:
         failed_reason=""
-        logging.debug(f"检查能否在 {clas.name} 的 {time} 安排 {subject}")
+        logging.debug(f"检查能否在第{time.day}天第{time.lesson}节安排课程")
         if clas.get_teacher(subject).is_busy(time):
-            failed_reason=f"{subject} 的任课老师 {clas.get_teacher(subject).name} 在 {time} 有课"
+            failed_reason=f"任课老师在第{time.day}天第{time.lesson}节有课"
 
         for rule in lesson_info.rules:
             # 不能排在指定时间
             if rule.type==Rule_type.avoid_time:
                 # 支持只写节次（如"上午第4节"）
                 if rule.subject==subject and time==rule.time:
-                    failed_reason=f"{clas.name} 不能在 {time} 排 {subject}"
+                    failed_reason=f"不能在第{time.day}天第{time.lesson}节排此课程"
             # 同一时间最多排几节课
             elif rule.type==Rule_type.set_num:
                 if rule.subject==subject and subject.get_time_num(time)>=int(rule.number):
-                    failed_reason=f"{clas.name} 同一时间 最多排 {rule.number} 节课"
+                    failed_reason=f"同一时间最多排 {rule.number} 节课"
             # 学科不能与另一学科同一时间
             elif rule.type==Rule_type.avoid_subject:
                 if subject==rule.subjectA and rule.subjectB.timetable.get(time):
-                    failed_reason=f"已经在 {time} 安排了会引起冲突的 {rule.subjectB}"
+                    failed_reason=f"已经在第{time.day}天第{time.lesson}节安排了会引起冲突的课程"
                 if subject==rule.subjectB and rule.subjectA.timetable.get(time):
-                    failed_reason=f"已经在 {time} 安排了会引起冲突的 {rule.subjectA}"
+                    failed_reason=f"已经在第{time.day}天第{time.lesson}节安排了会引起冲突的课程"
             # 老师不能与另一老师同一时间有课
             elif rule.type==Rule_type.avoid_teacher:
                 teacher=clas.get_teacher(subject)
                 teacherA = rule.teacherA
                 teacherB = rule.teacherB
                 if teacher==teacherA and teacherB.timetable.get(time):
-                    failed_reason=f"{clas.name} {subject} 的教师 {teacherA.name} 和 {teacherB.name} 在 {time} 会冲突"
+                    failed_reason=f"教师在第{time.day}天第{time.lesson}节会冲突"
                 elif teacher==teacherB and teacherA.timetable.get(time):
-                    failed_reason=f"{clas.name} {subject} 的教师 {teacherB.name} 和 {teacherA.name} 在 {time} 会冲突"
+                    failed_reason=f"教师在第{time.day}天第{time.lesson}节会冲突"
         if failed_reason:
             logging.debug(failed_reason)
             return False
@@ -52,22 +52,30 @@ class GenerateThread(QThread):
         super().__init__(parent)
         self.last_progress_time=0  # 记录上次发送进度的时间
         self.progress_interval=0.8  # 进度更新间隔（秒）
+        logging.debug("创建GenerateThread实例")
 
     def run(self):
         # 执行耗时的课程表生成逻辑
         try:
-            lesson_info.__init__()
             logging.info("开始生成课程表...")
+            start_time = time.time()
+            
+            logging.debug("重新初始化lesson_info")
+            lesson_info.__init__()
+            
             # 1. 固定时间优先分配
-            logging.debug("填充固定时间")
+            logging.debug(f"填充固定时间，共{len(set_lessons)}个固定课程")
             for lesson in set_lessons:
                 for clas in lesson_info.class_lst:
                     clas.add_lesson(lesson[0],lesson[1])
 
             # 2. 自动分配剩余课程
-            logging.debug("开始dfs分配剩余课程")
+            logging.debug(f"开始DFS分配剩余课程，共{len(lesson_info.class_lst)}个班级")
             self.finish=False
             self.dfs(lesson_info.class_lst[0],Time(1,1))
+            
+            elapsed_time = time.time() - start_time
+            logging.info(f"课程表生成完成，耗时{elapsed_time:.2f}秒")
         except:
             e=traceback.format_exc()
             logging.critical(f"生成课程表时错误：\n{e}")
