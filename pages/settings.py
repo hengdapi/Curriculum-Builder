@@ -449,6 +449,7 @@ class Settings(QFrame):
         logging.info("设置导出成功")
 
     def import_settings(self):
+        global cfg
         filename,_=QFileDialog.getOpenFileName(self,"导入设置","","JSON 文件(*.json)")
         if not filename:
             logging.debug("用户取消导入设置")
@@ -458,6 +459,7 @@ class Settings(QFrame):
         InfoBar.success("成功导入设置",f"已导入{filename}",parent=self,duration=3000)
         InfoBar.info("应用将自动重启以使设置生效","",parent=self,duration=1500)
         logging.info("设置导入成功，准备重启应用")
+        cfg=load_settings()
         restart_app(1500)
 
     def __init__(self,parent=None):

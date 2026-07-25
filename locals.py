@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import sys,copy,os,subprocess
+import os
+import sys,copy
 from typing import Literal
 
 import pandas as pd
-from PySide6.QtWidgets import QTableWidgetItem,QTableWidget
+from PySide6.QtWidgets import QTableWidgetItem,QTableWidget,QApplication
+from PySide6.QtCore import QTimer
 from qfluentwidgets_pro import TableWidget
 
 from wr_settings import *
@@ -51,66 +53,17 @@ def show_error(page,error:Exception):
     InfoBar.error("发生错误",str(error)+"\n错误信息已存入日志，可通过首页按钮反馈",duration=-1,parent=page)
 
 def restart_app(delay_ms=100):
-    import threading, time
+    """重启程序"""
+    logging.info(f'重启程序，sys.executable:{sys.executable}，sys.argv:{sys.argv}')
 
-    # ===== 判断是否为打包后的 exe =====
-    # Nuitka 不设置 sys.frozen，但 main.dist 里的 exe 名就是程序名
-    exe_basename = os.path.basename(sys.executable).lower()
-    is_packaged = (
-        getattr(sys, 'frozen', False)           # PyInstaller
-        or hasattr(sys, 'nuitka_version')        # Nuitka (部分版本)
-        or '__compiled__' in globals()           # Nuitka
-        or (exe_basename.endswith('.exe') and 'python' not in exe_basename)  # 兜底：可执行文件不是 python.exe
-    )
+    def _restart():
+        app=QApplication.instance()
+        if app:
+            app.quit()
+            app.processEvents()
+        os.execl(sys.executable,sys.executable,*sys.argv)
 
-    if is_packaged:
-        # 打包后：sys.executable 就是你的程序 exe
-        program = sys.executable
-        args = []
-        cwd = os.path.dirname(program)
-    else:
-        # 开发环境：用 pythonw.exe（无黑窗口）
-        program = sys.executable.replace("python.exe", "pythonw.exe")
-        if not os.path.exists(program):
-            program = sys.executable
-        script_path = os.path.abspath(sys.argv[0])
-        args = [script_path]
-        cwd = os.path.dirname(script_path)
-
-    logging.info(f"[重启] is_packaged={is_packaged} | program={program} | args={args} | cwd={cwd}")
-
-    # ===== 后面 DETACHED_PROCESS 等部分保持不变 =====
-    DETACHED_PROCESS = 0x00000008
-    CREATE_NO_WINDOW = 0x08000000
-
-    try:
-        proc = subprocess.Popen(
-            [program] + args,
-            creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW,
-            cwd=cwd,
-            close_fds=True,
-            stdin=None,
-            stdout=None,
-            stderr=None
-        )
-        logging.info(f"[重启] 新进程 PID={proc.pid}，启动成功")
-    except Exception as e:
-        logging.error(f"[重启] 启动新进程失败: {e}")
-        try:
-            start_cmd = f'cmd.exe /c "cd /d \"{cwd}\" & start \"\" \"{program}\" {" ".join(args)}"'
-            subprocess.Popen(start_cmd, shell=True)
-            logging.info(f"[重启] 兜底方案启动")
-        except Exception as e2:
-            logging.error(f"[重启] 兜底也失败: {e2}")
-        os._exit(0)
-
-    def _force_exit():
-        time.sleep(delay_ms / 1000.0)
-        logging.info("[重启] 旧进程退出")
-        os._exit(0)
-
-    t = threading.Thread(target=_force_exit, daemon=True)
-    t.start()
+    QTimer.singleShot(delay_ms,_restart)
 
 def is_special(subject:str):
     """
