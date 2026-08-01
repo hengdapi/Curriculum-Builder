@@ -7,7 +7,7 @@ if sys.platform == "win32":
         "-m",
         "nuitka",
         "--standalone",
-        "--windows-uac-admin",
+        # "--windows-uac-admin",
         "--windows-disable-console",
         "--plugin-enable=pyside6",
         "--include-qt-plugins=sensible,sqldrivers",
@@ -16,6 +16,8 @@ if sys.platform == "win32":
         "--show-memory",
         "--show-progress",
         "--windows-icon-from-ico=logo.ico",  # 设置应用程序图标
+        "--include-data-dir=images=images",
+        "--include-data-file=logo.ico=logo.ico",
         "main.py",
     ]
 
