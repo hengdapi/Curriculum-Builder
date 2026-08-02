@@ -5,12 +5,13 @@ from PySide6.QtCore import Qt,QByteArray
 from PySide6.QtWidgets import QFrame
 from PySide6 import QtGui
 from pages.timetable_widgets import TimeTableWidget,DraggableLessonCard,LessonStoragePane,widget_with_badge
-import time
+import time,darkdetect
 import traceback
 
 # 读取配置文件
 cfg=load_settings()
-
+colors={"Light":{"yes":QColor(150,255,150),"no":QColor(255,150,150),"curr":QColor(255,255,200)},
+        "Dark":{"yes":QColor(100,200,100),"no":QColor(200,100,100),"curr":QColor(150,150,100)}}[darkdetect.theme()]
 class Generate(QFrame):
     def __init__(self,parent=None):
         super().__init__(parent=parent)
@@ -371,15 +372,15 @@ class Generate(QFrame):
                     item.setTextAlignment(Qt.AlignCenter)
                     self.timetable_preview.setItem(i,j,item)
                 if can_place:
-                    item.setBackground(QColor(150,255,150))
+                    item.setBackground(colors["yes"])
                     item.setToolTip("可以拖拽放置")
                 else:
-                    item.setBackground(QColor(255,150,150))
+                    item.setBackground(colors["no"])
                     item.setToolTip("不可放置")
         if exchange and source_time:
             source_item=self.timetable_preview.item(source_time.lesson-1,source_time.day-1)
             if source_item:
-                source_item.setBackground(QColor(255,255,200))
+                source_item.setBackground(colors["curr"])
                 source_item.setToolTip("当前选中（再次点击可取消）")
 
     def on_drag_move(self,curr_item:QTableWidgetItem):
@@ -410,7 +411,7 @@ class Generate(QFrame):
             if curr_time:
                 teacher_item=self.teacher_timetable_preview.item(curr_time.lesson-1,curr_time.day-1)
                 if teacher_item:
-                    teacher_item.setBackground(QColor(255,255,200))
+                    teacher_item.setBackground(colors["curr"])
             if len(source_subjects)==2:
                 teacher2=clas.get_teacher(source_subjects[1])
                 display_df_in_table(self.teacher2_timetable_preview,teacher2.timetable_dataframe)
@@ -419,7 +420,7 @@ class Generate(QFrame):
                 if curr_time:
                     teacher_item=self.teacher2_timetable_preview.item(curr_time.lesson-1,curr_time.day-1)
                     if teacher_item:
-                        teacher_item.setBackground(QColor(255,255,200))
+                        teacher_item.setBackground(colors["curr"])
                 self.teacher2_timetable_subheader.show()
                 self.teacher2_timetable_preview.show()
             else:

@@ -18,6 +18,7 @@ if sys.platform == "win32":
         "--windows-icon-from-ico=logo.ico",  # 设置应用程序图标
         "--include-data-dir=images=images",
         "--include-data-file=logo.ico=logo.ico",
+        "--include-data-file=template.xlsx=template.xlsx",
         "main.py",
     ]
 

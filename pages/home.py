@@ -1,5 +1,7 @@
 # coding=utf-8
 import os,time
+
+from locals import project_url
 from style import *
 from PySide6.QtWidgets import QFrame,QVBoxLayout
 
@@ -9,16 +11,16 @@ class IssueHelp(MessageBoxBase):
         self.title=SubtitleLabel("创建议题")
         add_widget(self.title,self.viewLayout)
         self.image=ImageLabel("images/issue_help.png")
-        self.image.setFixedSize(1117,600)
+        self.image.setFixedSize(700,230)
         add_widget(self.image,self.viewLayout)
-        self.content_label=write("如果您不熟悉Gitee，请您详细阅读以上图片，了解如何创建议题。",self,self.viewLayout)
+        self.content_label=write("如果您不熟悉issue，请您详细阅读以上图片，了解如何创建议题。",self,self.viewLayout)
         self.content_label.setWordWrap(True)
         add_widget(self.content_label,self.viewLayout)
         self.yesButton.setText("打开议题页面")
         self.cancelButton.setText("关闭")
 
     def validate(self) -> bool:
-        os.system("start https://gitee.com/hengxiaopi/School-Timetable-Generater/issues")
+        os.system(f"start {project_url}/issues")
         return False
 
 class Home(QFrame):
@@ -39,7 +41,7 @@ class Home(QFrame):
         self.project_link=button("打开项目地址",self,layout)
         self.project_link.setIcon(FluentIcon.LINK)
         self.project_link.setFixedSize(200, 40)
-        self.project_link.clicked.connect(lambda:os.system("start https://gitee.com/hengxiaopi/School-Timetable-Generater"))
+        self.project_link.clicked.connect(lambda:os.system(f"start {project_url}"))
 
         self.feedback_label=subheader("反馈",self,layout,10)
 

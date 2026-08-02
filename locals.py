@@ -547,3 +547,5 @@ def del_cfg_diff(diff_classes:set,diff_teachers:set,diff_subjects:set)->None:
         if rule.get("subject") in diff_subjects or rule.get("subjectA") in diff_subjects or rule.get("subjectB") in diff_subjects or rule.get("teacherA") in diff_teachers or rule.get("teacherB") in diff_teachers:
             new_rules.remove(rule)
     cfg.rules.value=new_rules
+
+project_url="https://gitcode.com/2603_96523924/School-Timetable-Generator"
