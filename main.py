@@ -5,6 +5,8 @@ from PySide6.QtGui import QIcon,QFont
 from PySide6.QtCore import QLocale,QSize,QByteArray
 from qfluentwidgets_pro import MSFluentWindow,SplashScreen,FluentTranslator,setThemeColor,setTheme,Theme
 from qfluentwidgets_pro.common.icon import FluentIcon
+
+from locals import check_update
 from pages import home,settings,generate
 from qframelesswindow.utils import getSystemAccentColor
 from wr_settings import save_settings, cfg

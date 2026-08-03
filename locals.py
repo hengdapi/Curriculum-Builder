@@ -1,26 +1,93 @@
 from __future__ import annotations
 
-import os
+import os,requests
 import sys,copy
 from typing import Literal
+from threading import Thread
+from packaging import version
 
 import pandas as pd
 from PySide6.QtWidgets import QTableWidgetItem,QTableWidget,QApplication
 from PySide6.QtCore import QTimer
-from qfluentwidgets_pro import TableWidget
+from qfluentwidgets_pro import TableWidget,PrimaryPushButton,IndeterminateProgressBar
 
 from wr_settings import *
-
-sys.setrecursionlimit(10000)
+app_version="v1.0.0"
 logging.basicConfig(format="[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
                     level=logging.DEBUG,
-                    filename="log.txt",
-                    filemode="a",
                     encoding="utf-8")
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(logging.Formatter("[%(levelname)s] %(filename)s %(funcName)s %(lineno)d行:\t%(message)s"))
-logging.getLogger().addHandler(console_handler)
+
+file_handler = logging.FileHandler("log.txt", mode="a", encoding="utf-8")
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter("[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s"))
+logging.getLogger().addHandler(file_handler)
+
+def check_update(window):
+    try:
+        url="https://api.gitcode.com/api/v5/repos/2603_96523924/School-Timetable-Generator/releases/latest"
+
+        payload={}
+        headers={
+            'Accept':'application/json'
+        }
+
+        response=requests.get(url,headers=headers,data=payload).json()
+        logging.debug(f"检查更新api返回内容：{response}")
+
+        if version.parse(response["tag_name"])<=version.parse(app_version):
+            return
+        logging.info(f"发现新版本：{response['tag_name']}")
+        window.update_msg=InfoBar.info("发现新版本",f"新版本 {response["tag_name"]} 现已发布",duration=-1,parent=window)
+        download_button=PrimaryPushButton("下载新版本")
+        download_button.clicked.connect(lambda:download_update(window,response))
+        window.update_msg.addWidget(download_button)
+        window.update_msg.show()
+
+    except Exception as err:
+        e=traceback.format_exc()
+        logging.critical(f"检查更新出错：\n{e}")
+        show_error(window,err)
+
+class UpdateThread(Thread):
+    def __init__(self,response:dict):
+        super().__init__()
+        self.response=response
+
+    def run(self):
+        try:
+            logging.info("开始下载更新")
+            download_url=None
+            for asset in self.response["assets"]:
+                if asset["name"].endswith("Setup.exe"):
+                    download_url=asset.get("browser_download_url")
+                    break
+            if download_url is None:
+                logging.error("未找到安装包")
+                return
+            logging.info(f"找到最新版本，开始从 {download_url} 下载")
+
+            r = requests.get(download_url,stream=True)
+            with open("update.exe", "wb") as f:
+                for chunk in r.iter_content(chunk_size=1024):
+                    if chunk:
+                        f.write(chunk)
+            os.startfile("update.exe")
+        except Exception as err:
+            e=traceback.format_exc()
+            logging.critical(f"下载更新出错：\n{e}")
+
+def download_update(window,response:dict):
+    try:
+        window.update_msg.close()
+        InfoBar.info("正在后台下载更新","下载完成后将为您自动运行安装包",duration=3000,parent=window)
+        update_thread=UpdateThread(response)
+        logging.debug("更新线程已创建")
+        update_thread.start()
+    except Exception as err:
+        e=traceback.format_exc()
+        logging.critical(f"下载更新出错：\n{e}")
+        show_error(window,err)
+
 def lesson2str(lesson):
     """
     根据课程节次生成时间描述
@@ -29,12 +96,12 @@ def lesson2str(lesson):
     :return: 时间描述（如"上午第1节"）
     """
     # 判断课程是在上午还是下午
-    if lesson <= cfg.morning_class_num.value:
-        time = "上午"
+    if lesson<=cfg.morning_class_num.value:
+        time="上午"
     else:
-        time = "下午"
+        time="下午"
         # 调整课程节次为下午的相对节次
-        lesson -= cfg.morning_class_num.value
+        lesson-= cfg.morning_class_num.value
 
     return f"{time}第{lesson}节"
 
@@ -506,6 +573,7 @@ class LessonInfo:
             subject.continue_times={clas:0 for clas in self.class_lst}
 
         self.rules: list[Rule]=[]
+        sys.setrecursionlimit(len(self.classes)*5*(cfg.morning_class_num.value+cfg.afternoon_class_num.value)*2)
         logging.info("课程信息解析完成")
 lesson_info=LessonInfo()
 

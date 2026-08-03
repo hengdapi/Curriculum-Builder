@@ -1,7 +1,7 @@
 # coding=utf-8
-import os,time
+import webbrowser,time
 
-from locals import project_url
+from locals import project_url,check_update
 from style import *
 from PySide6.QtWidgets import QFrame,QVBoxLayout
 
@@ -20,7 +20,7 @@ class IssueHelp(MessageBoxBase):
         self.cancelButton.setText("关闭")
 
     def validate(self) -> bool:
-        os.system(f"start {project_url}/issues")
+        webbrowser.open(f"{project_url}/issues")
         return False
 
 class Home(QFrame):
@@ -41,7 +41,7 @@ class Home(QFrame):
         self.project_link=button("打开项目地址",self,layout)
         self.project_link.setIcon(FluentIcon.LINK)
         self.project_link.setFixedSize(200, 40)
-        self.project_link.clicked.connect(lambda:os.system(f"start {project_url}"))
+        self.project_link.clicked.connect(lambda:webbrowser.open(project_url))
 
         self.feedback_label=subheader("反馈",self,layout,10)
 
@@ -63,6 +63,8 @@ class Home(QFrame):
         layout.addStretch(1)  # 添加一个可伸缩的空间，值越大伸缩性越强
         self.setLayout(layout)
 
+        check_update(self)
+
     def on_send_issue(self):
         help_messagebox=IssueHelp(self.parent().parent().parent())
         help_messagebox.exec()
@@ -72,3 +74,15 @@ class Home(QFrame):
             log=f.read()
             QApplication.clipboard().setText(log)
         InfoBar.success("日志内容已复制到剪贴板","",parent=self,duration=2000)
+
+    def on_get_update_size(self,file_bytes):
+        if file_bytes is None:
+            self.update_bar=IndeterminateProgressBar()
+        else:
+            self.update_bar=ProgressBar()
+            self.update_bar.setMaximum(file_bytes)
+        self.update_msg.addWidget(self.update_bar)
+
+    def on_update_progress(self,progress):
+        if progress[1] is not None:
+            self.update_bar.setValue(progress[0])

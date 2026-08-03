@@ -35,9 +35,7 @@ def check(clas: Class,time: Time,subject: Subject) -> bool:
                 elif teacher==teacherB and teacherA.timetable.get(time):
                     failed_reason=f"教师在第{time.day}天第{time.lesson}节会冲突"
         if failed_reason:
-            logging.debug(failed_reason)
             return False
-        logging.debug("可以安排")
         return True
     except:
         e=traceback.format_exc()
