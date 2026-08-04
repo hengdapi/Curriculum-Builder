@@ -63,7 +63,7 @@
 2. 将本项目下载解压到本地
 3. 在项目根目录运行`pip install -r requirements.txt`（报错可搜索`pip换源`）
 4. 双击`main.py`或运行`python main.py`即可启动
-### 二、使用[Releases](https://github.com/hengdapi/School-Timetable-Generater/releases)中的安装包
+### 二、使用[Releases](https://github.com/hengdapi/School-Timetable-Generator/releases)中的安装包
 - 选择对应版本的安装包（后缀为`Setup.exe`），双击安装即可
 - 下载压缩包（`.zip`格式）解压到任意位置，双击运行`main.exe`
 ## 许可证

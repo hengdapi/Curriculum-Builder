@@ -9,12 +9,13 @@ from packaging import version
 import pandas as pd
 from PySide6.QtWidgets import QTableWidgetItem,QTableWidget,QApplication
 from PySide6.QtCore import QTimer
-from qfluentwidgets_pro import TableWidget,PrimaryPushButton,IndeterminateProgressBar
+from qfluentwidgets_pro import TableWidget,PrimaryPushButton
 
 from wr_settings import *
 app_version="v1.0.0"
 logging.basicConfig(format="[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
                     level=logging.DEBUG,
+                    filename=None,
                     encoding="utf-8")
 
 file_handler = logging.FileHandler("log.txt", mode="a", encoding="utf-8")
@@ -34,11 +35,12 @@ def check_update(window):
         response=requests.get(url,headers=headers,data=payload).json()
         logging.debug(f"检查更新api返回内容：{response}")
 
-        if version.parse(response["tag_name"])<=version.parse(app_version):
+        if version.parse(response["tag_name"])<version.parse(app_version):
             return
         logging.info(f"发现新版本：{response['tag_name']}")
         window.update_msg=InfoBar.info("发现新版本",f"新版本 {response["tag_name"]} 现已发布",duration=-1,parent=window)
-        download_button=PrimaryPushButton("下载新版本")
+        download_button=PrimaryPushButton()
+        download_button.setText("下载新版本")
         download_button.clicked.connect(lambda:download_update(window,response))
         window.update_msg.addWidget(download_button)
         window.update_msg.show()
@@ -59,7 +61,7 @@ class UpdateThread(Thread):
             download_url=None
             for asset in self.response["assets"]:
                 if asset["name"].endswith("Setup.exe"):
-                    download_url=asset.get("browser_download_url")
+                    download_url:str=asset.get("browser_download_url")
                     break
             if download_url is None:
                 logging.error("未找到安装包")
@@ -71,6 +73,7 @@ class UpdateThread(Thread):
                 for chunk in r.iter_content(chunk_size=1024):
                     if chunk:
                         f.write(chunk)
+            logging.info("下载完成，自动运行安装包update.exe")
             os.startfile("update.exe")
         except Exception as err:
             e=traceback.format_exc()
@@ -142,7 +145,7 @@ def is_special(subject:str):
     return subject.endswith("(0.5)") or subject.endswith("（0.5）")
 
 # 定义工作日列表
-days = [0,"星期一", "星期二", "星期三", "星期四", "星期五"]
+days = ["","星期一", "星期二", "星期三", "星期四", "星期五"]
 
 def display_df_in_table(table_widget: TableWidget|QTableWidget, df: pd.DataFrame):
     table_widget.clear()
@@ -197,7 +200,7 @@ def teacher_total_dataframe()->pd.DataFrame:
     return dataframe
 
 class Time:
-    def __init__(self,day:int=0,lesson:int=0,week:Literal["sin","dou","all"]="all",string:str=None):
+    def __init__(self,day:int=0,lesson:int=0,week:Literal["sin","dou","all"]="all",string:str|None=None):
         if string:
             self.day=days.index(string[:3])
             self.lesson=int(string[6:-1])
