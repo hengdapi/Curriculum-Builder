@@ -76,6 +76,6 @@ Copyright © 2026 Hengxiaopi.
 - [PySide6-Fluent-Widgets-Pro](https://github.com/Fairy-Oracle-Sanctuary/PySide6-Fluent-Widgets-Pro)
 
 感谢以下贡献者：
-[![](http://contrib.nn.ci/api?repo=hengdapi/School-Timetable-Generator)](https://github.com/hengdapi/School-Timetable-Generater/graphs/contributors)
+[![](http://contrib.nn.ci/api?repo=hengdapi/School-Timetable-Generator)](https://github.com/hengdapi/School-Timetable-Generator/graphs/contributors)
 
 特别感谢[buBailai](https://github.com/buBailai)为本项目的开发提供宝贵数据和建议
