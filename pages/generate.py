@@ -789,6 +789,22 @@ class Generate(QFrame):
             with open(filename,"r",encoding="utf-8") as f:
                 status=json.load(f)
 
+            for class_name,timetable in status.items():
+                if class_name not in lesson_info.class_names:
+                    InfoBar.error("课程表状态与当前设置不匹配",f"导入的课程表状态不是在当前设置下生成的",duration=-1,parent=self)
+                    logging.error("课程表状态导入失败")
+                    return
+                for time,subjects in timetable.items():
+                    if Time(string=time).lesson>cfg.morning_class_num.value+cfg.afternoon_class_num.value:
+                        InfoBar.error("课程表状态与当前设置不匹配",f"导入的课程表状态不是在当前设置下生成的",duration=-1,parent=self)
+                        logging.error("课程表状态导入失败")
+                        return
+                    for subject in subjects:
+                        if subject not in lesson_info.subjects:
+                            InfoBar.error("课程表状态与当前设置不匹配",f"导入的课程表状态不是在当前设置下生成的",duration=-1,parent=self)
+                            logging.error("课程表状态导入失败")
+                            return
+
             lesson_info.__init__()
             for class_name,timetable in status.items():
                 for time,subjects in timetable.items():
