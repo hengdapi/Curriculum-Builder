@@ -400,7 +400,7 @@ class Class:
         """
         self.name=name
         self.teachers=teachers
-        self.timetable:dict[Time,list[Subject]]={}
+        self.timetable:dict[Time,list[Subject]]={Time(day,lesson):[] for day in range(1,6) for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)}
         self.left_subjects:list[Subject]=[]
 
     def __str__(self):

@@ -155,6 +155,10 @@ class Generate(QFrame):
             InfoBar.error("请先在设置页面配置课程信息","",duration=-1,parent=self)
             self.setEnabled(False)
 
+    def resizeEvent(self, event: QtGui.QResizeEvent, /) -> None:
+        self.set_timetables_size()
+        super().resizeEvent(event)
+
     def hide_widgets(self):
         for widget in self.hidden_widgets:
             widget.hide()
@@ -556,8 +560,9 @@ class Generate(QFrame):
                 # 添加新课程
                 clas.add_lesson(target_time,source_subject.to_normal_lesson())
             self.refresh_object_tree()
-            self.show_timetable()
+            self.show_timetable(False)
             self.show_lesson_details(clas.get_lessons(target_time),target_time)
+            self.set_timetables_size()
             logging.info(f"暂存课程成功放入课表")
         except Exception as error:
             e=traceback.format_exc()
@@ -789,7 +794,7 @@ class Generate(QFrame):
                 for time,subjects in timetable.items():
                     if len(subjects)==1:
                         lesson_info.classes[class_name].add_lesson(Time(string=time),lesson_info.subjects[subjects[0]])
-                    else:
+                    elif len(subjects)==2:
                         lesson_info.classes[class_name].add_lesson(Time(string=time).sin_week,lesson_info.subjects[subjects[0]])
                         lesson_info.classes[class_name].add_lesson(Time(string=time).dou_week,lesson_info.subjects[subjects[1]])
 
