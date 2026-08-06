@@ -6,7 +6,6 @@ from PySide6.QtCore import QLocale,QSize,QByteArray
 from qfluentwidgets_pro import MSFluentWindow,SplashScreen,FluentTranslator,setThemeColor,setTheme,Theme
 from qfluentwidgets_pro.common.icon import FluentIcon
 
-from locals import check_update
 from pages import home,settings,generate
 from qframelesswindow.utils import getSystemAccentColor
 from wr_settings import save_settings, cfg
@@ -22,12 +21,18 @@ class Window(MSFluentWindow):
         self.setWindowIcon(QIcon("logo.ico"))
         self.setFont(QFont("Microsoft YaHei", 20))
 
-        # ===== 恢复窗口位置/大小（取代原来的 resize + move）=====
+        # ===== 恢复窗口位置/大小 =====
+        # 先恢复普通几何，不立即应用最大化；等窗口显示并布局完成后再最大化，
+        # 避免无边框窗口在启动时内容区域计算错误（缩在左上角）
         geom_b64 = cfg.window_geometry.value
         if geom_b64:
             try:
                 data = QByteArray.fromBase64(geom_b64.encode())
                 self.restoreGeometry(data)
+                # 兼容旧配置：如果 geometry 里仍带最大化状态，先恢复为普通尺寸，
+                # 避免后续布局计算时内容区域异常
+                if self.isMaximized():
+                    self.showNormal()
                 logging.debug("成功恢复窗口位置和大小")
             except Exception as e:
                 logging.warning(f"恢复窗口位置失败，使用默认设置: {e}")
@@ -49,6 +54,11 @@ class Window(MSFluentWindow):
         splashScreen.finish()
         logging.info("主窗口初始化完成")
 
+        # 布局稳定后再恢复最大化状态
+        if cfg.window_maximized.value:
+            self.showMaximized()
+            logging.debug("恢复窗口最大化状态")
+
     def _default_geometry(self):
         """没有记录时的默认尺寸和居中"""
         self.resize(1300, 700)
@@ -60,8 +70,16 @@ class Window(MSFluentWindow):
         )
 
     def closeEvent(self, e):
-        """窗口关闭时保存 geometry 到配置"""
+        """窗口关闭时保存 geometry 和最大化状态到配置"""
         try:
+            is_max = self.isMaximized()
+            cfg.window_maximized.value = is_max
+
+            # 若当前处于最大化，先恢复为普通状态再保存 geometry，
+            # 否则 saveGeometry 会保存最大化后的尺寸，导致下次启动异常
+            if is_max:
+                self.showNormal()
+
             state = self.saveGeometry()              # QByteArray
             cfg.window_geometry.value = bytes(state.toBase64()).decode()
             save_settings()
@@ -73,17 +91,10 @@ class Window(MSFluentWindow):
 if __name__ == '__main__':
     logging.info("\n\n" + "="*60)
     logging.info(f"程序开始启动，当前时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
-    
-    # 详细的系统信息
-    logging.info(f"操作系统平台：{sys.platform}")
-    logging.info(f"系统架构：{sys.maxsize > 2**32 and '64位' or '32位'}")
-
     try:
         import platform
         logging.info(f"操作系统名称：{platform.system()} {platform.release()}")
         logging.info(f"操作系统版本：{platform.version()}")
-        logging.info(f"处理器信息：{platform.processor()}")
-        logging.info(f"机器类型：{platform.machine()}")
     except:
         pass
     

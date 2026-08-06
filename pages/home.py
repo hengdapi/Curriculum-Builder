@@ -74,15 +74,3 @@ class Home(QFrame):
             log=f.read()
             QApplication.clipboard().setText(log)
         InfoBar.success("日志内容已复制到剪贴板","",parent=self,duration=2000)
-
-    def on_get_update_size(self,file_bytes):
-        if file_bytes is None:
-            self.update_bar=IndeterminateProgressBar()
-        else:
-            self.update_bar=ProgressBar()
-            self.update_bar.setMaximum(file_bytes)
-        self.update_msg.addWidget(self.update_bar)
-
-    def on_update_progress(self,progress):
-        if progress[1] is not None:
-            self.update_bar.setValue(progress[0])

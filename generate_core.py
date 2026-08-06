@@ -5,7 +5,7 @@ from PySide6.QtCore import QThread,Signal
 def check(clas: Class,time: Time,subject: Subject) -> bool:
     try:
         failed_reason=""
-        logging.debug(f"检查能否在第{time.day}天第{time.lesson}节安排课程")
+        # logging.debug(f"检查能否在第{time.day}天第{time.lesson}节安排课程")
         if clas.get_teacher(subject).is_busy(time):
             failed_reason=f"任课老师在第{time.day}天第{time.lesson}节有课"
 

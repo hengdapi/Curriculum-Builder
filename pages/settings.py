@@ -444,7 +444,7 @@ class Settings(QFrame):
             logging.debug("用户取消导出设置")
             return
         logging.info(f"导出设置文件: {filename}")
-        shutil.copy2("settings.json",filename)
+        shutil.copy2(settings_file,filename)
         InfoBar.success("成功导出设置",f"已导出至{filename}",parent=self)
         logging.info("设置导出成功")
 
@@ -455,7 +455,7 @@ class Settings(QFrame):
             logging.debug("用户取消导入设置")
             return
         logging.info(f"导入设置文件: {filename}")
-        shutil.copy2(filename,"settings.json")
+        shutil.copy2(filename,settings_file)
         InfoBar.success("成功导入设置",f"已导入{filename}",parent=self,duration=3000)
         InfoBar.info("应用将自动重启以使设置生效","",parent=self,duration=1500)
         logging.info("设置导入成功，准备重启应用")

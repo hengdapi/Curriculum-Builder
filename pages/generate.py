@@ -1,9 +1,12 @@
+import logging
+
 from style import *
 from generate_core import *
 from save_core import SaveThread
 from PySide6.QtCore import Qt,QByteArray
 from PySide6.QtWidgets import QFrame
 from PySide6 import QtGui
+from qfluentwidgets_pro.components.date_time.picker_base import SeparatorWidget
 from pages.timetable_widgets import TimeTableWidget,DraggableLessonCard,LessonStoragePane,widget_with_badge
 import time,darkdetect
 import traceback
@@ -26,9 +29,6 @@ class Generate(QFrame):
 
         self.title = title("生成",self,self.layout,10)
         self.title.setFixedHeight(60)
-        # 检查是否已配置课程信息
-        if not cfg.lessons_info.value:
-            settings_error(self,"请先在设置中配置课程信息")
 
         self.operation_layout=QHBoxLayout()
         self.layout.addLayout(self.operation_layout)
@@ -38,23 +38,39 @@ class Generate(QFrame):
         self.generate_button.setIcon(FluentIcon.BRUSH)
         self.generate_button.setFixedSize(160,40)
         self.generate_button.clicked.connect(self.generate_timetable)
-        add_widget(self.generate_button,self.operation_layout)
+        add_widget(self.generate_button,self.operation_layout,0)
 
         self.save_button=PrimaryPushButton()
         self.save_button.setText("导出课程表")
+        self.save_button.setToolTip("直接导出最终的Excel课程表表格")
         self.save_button.setIcon(FluentIcon.SAVE)
         self.save_button.setFixedSize(160,40)
         self.save_button.clicked.connect(self.save_timetable)
         add_widget(self.save_button,self.operation_layout)
+        add_widget(SeparatorWidget(orient=Qt.Vertical),self.operation_layout)
+
+        self.import_button=button("导入课程表状态",self,self.operation_layout,0)
+        self.import_button.setToolTip("导入曾经导出的课程表状态，用于在曾经未排好的课程表基础上继续排课")
+        self.import_button.setIcon(FluentIcon.DOWNLOAD)
+        self.import_button.setFixedHeight(40)
+        self.import_button.clicked.connect(self.import_status)
+
+        self.export_button=button("导出课程表状态",self,self.operation_layout)
+        self.export_button.setToolTip("导出当前的课程表状态，用于保存当前正在编排的课程表数据，以便下次导入在当前状态下继续排课")
+        self.export_button.setIcon(FluentIcon.SHARE)
+        self.export_button.setFixedHeight(40)
+        self.export_button.clicked.connect(self.export_status)
         self.operation_layout.addStretch(1)
 
+        self.progress_widget=QWidget()
+        self.progress_layout=QVBoxLayout(self.progress_widget)
         self.progress_bar=ProgressBar()
-        self.progress_bar.hide()
-        add_widget(self.progress_bar,self.layout,0)
+        add_widget(self.progress_bar,self.progress_layout,0)
 
-        self.log_label:BodyLabel=write("",self,self.layout)
-        self.log_label.hide()
-        add_widget(self.log_label,self.layout,0)
+        self.log_label:BodyLabel=write("",self,self.progress_layout)
+        self.progress_layout.addStretch(1)
+        add_widget(self.progress_widget,self.layout,0)
+        self.progress_widget.hide()
 
         # 课程表预览
         self.object_splitter=Splitter(Qt.Horizontal)
@@ -64,22 +80,13 @@ class Generate(QFrame):
         self.object_pane=QWidget()
         self.object_layout=QVBoxLayout(self.object_pane)
         self.object_search=SearchLineEdit()
+        self.object_search.textChanged.connect(self.filter_object_tree)
         add_widget(self.object_search,self.object_layout)
-        search_items=[]
-        for grade,classes in cfg.grades_info.value.items():
-            search_items.append(grade)
-            search_items.extend(classes)
-        search_items.extend(cfg.teachers_info.value)
-        self.search_completer=QCompleter(search_items,self.object_search)
-        self.search_completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self.search_completer.setFilterMode(Qt.MatchContains)
-        self.object_search.setCompleter(self.search_completer)
 
         self.object_tree=TreeWidget(self)
         self.object_tree.setHeaderHidden(True)
         self.object_tree.clicked.connect(self.show_timetable)
         add_widget(self.object_tree,self.object_layout,0)
-        self.object_search.textChanged.connect(self.filter_object_tree)
         self.object_splitter.addWidget(self.object_pane)
 
         self.preview_splitter=Splitter(Qt.Horizontal)
@@ -137,12 +144,16 @@ class Generate(QFrame):
             byte_array=QByteArray.fromBase64(cfg.preview_splitter_state.value.encode())
             self.preview_splitter.restoreState(byte_array)
 
-        self.hidden_widgets=[self.save_button,self.preview_splitter,self.object_splitter]
+        self.hidden_widgets=[self.save_button,self.preview_splitter,self.object_splitter,self.export_button]
         self.hide_widgets()
         # === 设置滚动区域内容 ===
         self.layout.addStretch(1)
         self.first_generate=True
         main_layout.addWidget(view)
+        # 检查是否已配置课程信息
+        if not cfg.lessons_info.value:
+            InfoBar.error("请先在设置页面配置课程信息","",duration=-1,parent=self)
+            self.setEnabled(False)
 
     def hide_widgets(self):
         for widget in self.hidden_widgets:
@@ -279,17 +290,20 @@ class Generate(QFrame):
         try:
             logging.info("生成按钮被点击")
             logging.debug(f"当前配置：{len(lesson_info.class_names)}个班级，{len(lesson_info.subjects)}个科目，{len(lesson_info.teachers)}个老师")
-            
+
+            if self.first_generate:
+                self.first_generate=False
+            else:
+                msgbox=MessageBox("确定重新生成课程表？","重新生成会使当前的所有修改丢失，建议先导出当前课程表数据，是否继续重新生成？",self.parent().parent().parent())
+                if not msgbox.exec():
+                    return
             # 禁用生成按钮防止重复点击
             self.generate_button.setEnabled(False)
-            self.progress_bar.show()
+            self.import_button.setEnabled(False)
+            self.progress_widget.show()
             self.progress_bar.setValue(0)
             self.progress_bar.setMaximum(len(lesson_info.class_names))
-            self.log_label.show()
             self.hide_widgets()
-            if not self.first_generate:
-                self.layout.addStretch(1)
-                self.first_generate=False
 
             # 创建并启动线程
             self.generate_start_time=time.time()
@@ -302,6 +316,18 @@ class Generate(QFrame):
             e=traceback.format_exc()
             logging.critical(f"生成课程表出错：\n{e}")
             show_error(self,error)
+
+    def on_generation_finished(self):
+        logging.info("排课已完成")
+        self.generate_button.setEnabled(True)
+        self.import_button.setEnabled(True)
+        self.generate_button.setText("重新生成")
+        self.progress_widget.hide()
+        self.show_widgets()
+        self.preview_splitter.hide()
+        self.show_object_tree()
+        self.show_timetable()
+        self.layout.takeAt(self.layout.count()-1)
 
     def check_exchange(self,clas:Class,curr_time:Time,target_time:Time,source_subjects:list[Subject],target_subjects:list[Subject])->bool:
         # 两个半周课程：检查能否拼接
@@ -625,16 +651,17 @@ class Generate(QFrame):
                 else:
                     clas.add_lesson(curr_time.sin_week,target_subjects[0])
                     clas.add_lesson(curr_time.dou_week,target_subjects[1])
-            self.show_timetable()
+            self.show_timetable(False)
             self.timetable_preview.setCurrentCell(target_time.lesson-1,target_time.day-1)
             self.show_lesson_details(curr_subjects,target_time)
+            self.set_timetables_size()
             logging.info(f"课程交换成功")
         except Exception as error:
             e=traceback.format_exc()
             logging.critical(f"交换课程出错：\n{e}")
             show_error(self,error)
 
-    def show_timetable(self):
+    def show_timetable(self,set_size=True):
         object_item=self.object_tree.currentItem()
         if not object_item:
             return
@@ -648,7 +675,8 @@ class Generate(QFrame):
                 display_df_in_table(self.timetable_preview,class_total_dataframe())
                 self.store_lesson_subheader.hide()
                 self.lesson_storage_pane.hide()
-                self.set_timetables_size(False)
+                if set_size:
+                    self.set_timetables_size(False)
             elif object_item.text(0)=="教师总表":
                 self.preview_mode=3
                 self.timetable_preview.setDragEnabled(False)
@@ -656,7 +684,8 @@ class Generate(QFrame):
                 display_df_in_table(self.timetable_preview,teacher_total_dataframe())
                 self.store_lesson_subheader.hide()
                 self.lesson_storage_pane.hide()
-                self.set_timetables_size(False)
+                if set_size:
+                    self.set_timetables_size(False)
             elif object_item.parent() is not None and object_item.parent().text(0) =="教师课表":
                 self.preview_mode=1
                 self.timetable_preview.setDragEnabled(False)
@@ -664,7 +693,8 @@ class Generate(QFrame):
                 self.lesson_storage_pane.hide()
                 self.preview_object=lesson_info.teachers[object_item.text(0)]
                 self.timetable_subheader.setText(f"{self.preview_object.name}老师 课程表")
-                self.set_timetables_size()
+                if set_size:
+                    self.set_timetables_size()
                 display_df_in_table(self.timetable_preview,self.preview_object.timetable_dataframe)
             elif object_item.parent().parent() is not None and object_item.parent().parent().data(0,Qt.UserRole) =="班级课表":
                 self.preview_mode=0
@@ -673,24 +703,13 @@ class Generate(QFrame):
                 self.timetable_subheader.setText(f"{self.preview_object} 课程表")
                 display_df_in_table(self.timetable_preview,self.preview_object.timetable_dataframe)
                 self.show_stored_lesson_cards()
-                self.set_timetables_size()
+                if set_size:
+                    self.set_timetables_size()
             else:
                 raise ValueError("未知的课程表类型")
         except:
             self.preview_splitter.hide()
             return
-
-    def on_generation_finished(self):
-        logging.info("排课已完成")
-        self.generate_button.setEnabled(True)
-        self.generate_button.setText("重新生成")
-        self.log_label.hide()
-        self.progress_bar.hide()
-        self.show_widgets()
-        self.preview_splitter.hide()
-        self.show_object_tree()
-        self.show_timetable()
-        self.layout.takeAt(self.layout.count()-1)
 
     def on_progress_update(self,progress:tuple[Class,Time]):
         try:
@@ -713,7 +732,7 @@ class Generate(QFrame):
                 return
         filename,_=QFileDialog.getSaveFileName(self,"导出课程表","","Microsoft Excel 工作表(*.xlsx);;Microsoft Excel 97-2003 工作表(*.xls)")
         if not filename:
-            logging.debug("用户取消导出")
+            logging.info("用户取消导出")
             return
         logging.info(f"导出课程表文件名：{filename}")
 
@@ -736,3 +755,53 @@ class Generate(QFrame):
     def on_save_error(self,error):
         self.save_infobar.close()
         InfoBar.error("课程表导出失败！",error,parent=self,duration=-1)
+
+    def export_status(self):
+        try:
+            logging.info("导出课程表状态")
+            filename,_=QFileDialog.getSaveFileName(self,"导出课程表状态","","课程表状态(*.json)")
+            if not filename:
+                logging.info("用户取消导出")
+                return
+            logging.debug(f"导出课程表状态文件名：{filename}")
+            with open(filename,"w",encoding="utf-8") as f:
+                json.dump(lesson_info.classes,f,cls=LessonInfoEncoder,ensure_ascii=False)
+            logging.info("课程表状态导出成功")
+            InfoBar.success("课程表状态导出成功！",f"已导出至 {filename}",parent=self,duration=3000)
+        except Exception as error:
+            e=traceback.format_exc()
+            logging.critical(f"导出课程表状态出错：\n{e}")
+            show_error(self,error)
+
+    def import_status(self):
+        try:
+            logging.info("导入课程表状态")
+            filename,_=QFileDialog.getOpenFileName(self,"导入课程表状态","","课程表状态(*.json)")
+            if not filename:
+                logging.info("用户取消导入")
+                return
+            logging.debug(f"导入课程表状态文件名：{filename}")
+            with open(filename,"r",encoding="utf-8") as f:
+                status=json.load(f)
+
+            lesson_info.__init__()
+            for class_name,timetable in status.items():
+                for time,subjects in timetable.items():
+                    if len(subjects)==1:
+                        lesson_info.classes[class_name].add_lesson(Time(string=time),lesson_info.subjects[subjects[0]])
+                    else:
+                        lesson_info.classes[class_name].add_lesson(Time(string=time).sin_week,lesson_info.subjects[subjects[0]])
+                        lesson_info.classes[class_name].add_lesson(Time(string=time).dou_week,lesson_info.subjects[subjects[1]])
+
+            logging.info("课程表状态导入成功")
+            InfoBar.success("课程表状态导入成功！",f"已从 {filename} 导入课程表状态",parent=self,duration=3000)
+
+            self.show_widgets()
+            self.preview_splitter.hide()
+            self.show_object_tree()
+            self.show_timetable()
+            self.layout.takeAt(self.layout.count()-1)
+        except Exception as error:
+            e=traceback.format_exc()
+            logging.critical(f"导入课程表状态出错：\n{e}")
+            show_error(self,error)

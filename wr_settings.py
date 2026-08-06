@@ -4,6 +4,7 @@ import traceback
 from PySide6.QtCore import Qt
 from qfluentwidgets_pro import QConfig,RangeConfigItem,OptionsConfigItem,BoolValidator,ConfigItem,qconfig,RangeValidator,InfoBar,InfoBarPosition
 
+settings_file="%appdata%/School-Timetable-Generator/settings.json"
 class Settings(QConfig):
     morning_class_num=RangeConfigItem("table_style","morning_class_num",4,RangeValidator(1,10),restart=True)
     afternoon_class_num=RangeConfigItem("table_style","afternoon_class_num",2,RangeValidator(1,10),restart=True)
@@ -27,10 +28,11 @@ class Settings(QConfig):
     object_splitter_state=ConfigItem("ui","object_splitter_state",None)
     preview_splitter_state=ConfigItem("ui","preview_splitter_state",None)
     window_geometry=ConfigItem("ui","window_geometry",None)
+    window_maximized=ConfigItem("ui","window_maximized",False)
 
 def load_settings():
     cfg=Settings()
-    qconfig.load("settings.json", cfg)
+    qconfig.load(settings_file, cfg)
     return cfg
 cfg=load_settings()
 

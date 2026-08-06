@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import os,requests
+import os,requests,json,webbrowser
 import sys,copy
-from typing import Literal
+from typing import Literal,Any
 from threading import Thread
 from packaging import version
 
 import pandas as pd
 from PySide6.QtWidgets import QTableWidgetItem,QTableWidget,QApplication
 from PySide6.QtCore import QTimer
-from qfluentwidgets_pro import TableWidget,PrimaryPushButton
+from qfluentwidgets_pro import TableWidget,PrimaryPushButton,PushButton
 
 from wr_settings import *
 app_version="v1.0.0"
@@ -35,10 +35,14 @@ def check_update(window):
         response=requests.get(url,headers=headers,data=payload).json()
         logging.debug(f"检查更新api返回内容：{response}")
 
-        if version.parse(response["tag_name"])<version.parse(app_version):
+        if version.parse(response["tag_name"])<=version.parse(app_version):
             return
         logging.info(f"发现新版本：{response['tag_name']}")
-        window.update_msg=InfoBar.info("发现新版本",f"新版本 {response["tag_name"]} 现已发布",duration=-1,parent=window)
+        window.update_msg=InfoBar.info("发现新版本",f"新版本 {response["tag_name"]} 现已发布，更新内容：{response["body"]}",duration=-1,parent=window)
+        view_update_button=PushButton()
+        view_update_button.setText("查看详细信息")
+        view_update_button.clicked.connect(lambda:webbrowser.open(f"{project_url}/releases/{response["tag_name"]}"))
+        window.update_msg.addWidget(view_update_button)
         download_button=PrimaryPushButton()
         download_button.setText("下载新版本")
         download_button.clicked.connect(lambda:download_update(window,response))
@@ -202,16 +206,18 @@ def teacher_total_dataframe()->pd.DataFrame:
 class Time:
     def __init__(self,day:int=0,lesson:int=0,week:Literal["sin","dou","all"]="all",string:str|None=None):
         if string:
+            if "【单】" in string:
+                self.week="sin"
+                string=string.replace("【单】","")
+            elif "【双】" in string:
+                self.week="dou"
+                string=string.replace("【双】","")
+            else:
+                self.week="all"
             self.day=days.index(string[:3])
             self.lesson=int(string[6:-1])
             if "下午" in string:
                 self.lesson+=cfg.morning_class_num.value
-            if "【单】" in string:
-                self.week="sin"
-            elif "【双】" in string:
-                self.week="dou"
-            else:
-                self.week="all"
         else:
             self.day=day
             self.lesson=lesson
@@ -348,7 +354,7 @@ class Subject:
         self.continuous=False
         self.continue_times:dict[Class,int]={}
         self.time_list:dict[Time,int]={Time(day,lesson):0 for day in range(1,6) for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)}
-        self.timetable:dict[Time,list[Class]]={}
+        self.timetable:dict[Time,list[Class]]={Time(day,lesson):[] for day in range(1,6) for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)}
 
     def __str__(self):
         if self.continuous:
@@ -368,10 +374,7 @@ class Subject:
 
     def add_lesson(self,clas:Class,time:Time):
         self.time_list[time]+=1
-        if time in self.timetable:
-            self.timetable[time].append(clas)
-        else:
-            self.timetable[time]=[clas]
+        self.timetable[time].append(clas)
 
     def remove_lesson(self,clas:Class,time:Time):
         self.time_list[time]-=1
@@ -405,6 +408,12 @@ class Class:
 
     def __hash__(self):
         return hash(self.name)
+
+    def __json__(self):
+        timetable={}
+        for time,subjects in self.timetable.items():
+            timetable[str(time)]=[subject.name for subject in subjects]
+        return timetable
 
     def get_teacher(self,subject:Subject):
         return self.teachers[subject.name]
@@ -475,6 +484,12 @@ class Class:
                     data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"\n【单】{self.get_teacher(subjects[0])}/"
                     data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"【双】{self.get_teacher(subjects[1])}"
         return data
+
+class LessonInfoEncoder(json.JSONEncoder):
+    def default(self, o: Any) -> Any:
+        if hasattr(o, "__json__"):
+            return o.__json__()
+        return super().default(o)
 
 class Rule_type:
     set_time="set_time"
@@ -576,7 +591,7 @@ class LessonInfo:
             subject.continue_times={clas:0 for clas in self.class_lst}
 
         self.rules: list[Rule]=[]
-        sys.setrecursionlimit(len(self.classes)*5*(cfg.morning_class_num.value+cfg.afternoon_class_num.value)*2)
+        sys.setrecursionlimit(max(len(self.classes)*5*(cfg.morning_class_num.value+cfg.afternoon_class_num.value)*2,1000))
         logging.info("课程信息解析完成")
 lesson_info=LessonInfo()
 
