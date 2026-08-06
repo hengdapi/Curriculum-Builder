@@ -1,10 +1,10 @@
-import logging
+import logging,os
 import traceback
 
 from PySide6.QtCore import Qt
 from qfluentwidgets_pro import QConfig,RangeConfigItem,OptionsConfigItem,BoolValidator,ConfigItem,qconfig,RangeValidator,InfoBar,InfoBarPosition
 
-settings_file="%appdata%/School-Timetable-Generator/settings.json"
+settings_file=f"C:/Users/{os.getlogin()}/AppData/Roaming/School-Timetable-Generator/settings.json"
 class Settings(QConfig):
     morning_class_num=RangeConfigItem("table_style","morning_class_num",4,RangeValidator(1,10),restart=True)
     afternoon_class_num=RangeConfigItem("table_style","afternoon_class_num",2,RangeValidator(1,10),restart=True)
