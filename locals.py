@@ -12,7 +12,7 @@ from PySide6.QtCore import QTimer
 from qfluentwidgets_pro import TableWidget,PrimaryPushButton,PushButton
 
 from wr_settings import *
-app_version="v1.0.0"
+app_version="v1.1.0"
 logging.basicConfig(format="[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
                     level=logging.DEBUG,
                     filename=None,
