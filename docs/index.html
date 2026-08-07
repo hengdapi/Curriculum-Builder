@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>课程表生成器 — 智能排课，轻松高效</title>
+<link rel="icon" type="image/x-icon" href="logo.ico">
+<style>
+  /* ─── Tokens ─── */
+  :root {
+    --bg: #0b1524;
+    --bg-alt: #101c30;
+    --card: #162238;
+    --accent: #a0c5e5;
+    --accent-glow: rgba(160,197,229,0.25);
+    --text: #e4eaf3;
+    --text-dim: #8495ae;
+    --border: rgba(255,255,255,0.06);
+  }
+
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.7;
+    overflow-x:hidden;
+  }
+  a{color:var(--accent);text-decoration:none;transition:color .2s}
+  a:hover{color:#c8dff5}
+  code{background:rgba(255,255,255,.07);padding:2px 8px;border-radius:4px;font-size:.9em}
+  img,video{display:block}
+
+  /* ─── Scroll Reveal ─── */
+  .reveal{opacity:0;transform:translateY(40px);transition:opacity .7s cubic-bezier(.22,.61,.36,1),transform .7s cubic-bezier(.22,.61,.36,1)}
+  .reveal.visible{opacity:1;transform:translateY(0)}
+
+  /* ─── Floating Particles (JS generated) ─── */
+  .particles{position:fixed;inset:0;pointer-events:none;z-index:0}
+  .particle{
+    position:absolute;border-radius:50%;background:var(--accent);
+    animation:driftUp linear infinite;
+  }
+  @keyframes driftUp{
+    0%{transform:translateY(100vh) scale(0);opacity:0}
+    10%{opacity:.4}
+    90%{opacity:.1}
+    100%{transform:translateY(-10vh) scale(2);opacity:0}
+  }
+
+  /* ─── Hero ─── */
+  .hero{
+    position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    text-align:center;padding:60px 24px;overflow:hidden;z-index:1
+  }
+  .hero .bokeh-bg{position:absolute;inset:0;pointer-events:none}
+  .hero .bokeh{
+    position:absolute;border-radius:50%;filter:blur(80px);
+    animation:floatBokeh 10s ease-in-out infinite alternate;
+  }
+  .hero .bokeh:nth-child(1){width:280px;height:280px;background:#2a5a9a;top:5%;left:10%;opacity:.18}
+  .hero .bokeh:nth-child(2){width:200px;height:200px;background:var(--accent);top:55%;left:70%;opacity:.12;animation-delay:-3s}
+  .hero .bokeh:nth-child(3){width:160px;height:160px;background:#3a7aaa;top:15%;left:75%;opacity:.10;animation-delay:-6s}
+  .hero .bokeh:nth-child(4){width:240px;height:240px;background:#1a4a7a;top:65%;left:15%;opacity:.14;animation-delay:-8s}
+  @keyframes floatBokeh{
+    0%{transform:translate(0,0) scale(1)}
+    100%{transform:translate(30px,-20px) scale(1.15)}
+  }
+
+  .hero-inner{position:relative;z-index:2;max-width:900px}
+  .hero-logo{width:150px;height:150px;border-radius:28px;box-shadow:0 0 80px var(--accent-glow);margin:0 auto 36px;animation:logoFloat 3s ease-in-out infinite}
+  @keyframes logoFloat{
+    0%,100%{transform:translateY(0)}
+    50%{transform:translateY(-8px)}
+  }
+  .hero h1{font-size:clamp(36px,7vw,64px);font-weight:900;letter-spacing:-1px;margin-bottom:16px}
+  .hero h1 span{background:linear-gradient(135deg,var(--accent),#6aace0);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hero .tagline{font-size:20px;color:var(--text-dim);margin-bottom:36px;max-width:500px;margin-left:auto;margin-right:auto}
+  .hero-badges{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:48px}
+  .hero .badge{
+    padding:8px 20px;border-radius:24px;font-size:13px;font-weight:600;
+    border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);
+    backdrop-filter:blur(12px);transition:all .3s
+  }
+  .hero .badge:hover{border-color:var(--accent);background:rgba(160,197,229,.08)}
+  .hero-cta{
+    display:inline-flex;align-items:center;gap:8px;margin-bottom:40px;
+    padding:12px 28px;border-radius:30px;font-size:15px;font-weight:700;
+    background:var(--accent);color:#0b1524;border:none;cursor:pointer;
+    transition:all .3s;text-decoration:none
+  }
+  .hero-cta:hover{
+    background:#8ab5db;color:#0b1524;transform:translateY(-2px);
+    box-shadow:0 6px 20px rgba(0,0,0,.3)
+  }
+  .hero-cta-gh{width:20px;height:20px}
+  .hero-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:28px}
+
+  .hero-stats{display:flex;gap:40px;justify-content:center;flex-wrap:wrap;margin-bottom:52px}
+  .stat{text-align:center}
+  .stat-num{font-size:42px;font-weight:900;color:var(--accent);line-height:1}
+  .stat-label{font-size:13px;color:var(--text-dim);margin-top:4px;text-transform:uppercase;letter-spacing:1px}
+
+  .scroll-hint{
+    display:flex;flex-direction:column;align-items:center;gap:8px;opacity:.5;
+    animation:bounce 2s ease-in-out infinite
+  }
+  @keyframes bounce{
+    0%,100%{transform:translateY(0)}
+    50%{transform:translateY(8px)}
+  }
+  .scroll-hint span{font-size:12px;color:var(--text-dim)}
+  .scroll-arrow{width:24px;height:24px;border-right:2px solid var(--accent);border-bottom:2px solid var(--accent);transform:rotate(45deg)}
+
+  /* ─── Section ─── */
+  section{position:relative;z-index:1;padding:80px 24px}
+  section.alt{background:var(--bg-alt)}
+  .sec-inner{max-width:1100px;margin:0 auto}
+  .sec-label{
+    text-align:center;font-size:13px;text-transform:uppercase;letter-spacing:3px;
+    color:var(--accent);margin-bottom:12px;font-weight:700
+  }
+  .sec-title{font-size:clamp(26px,5vw,38px);font-weight:800;text-align:center;margin-bottom:12px}
+  .sec-sub{text-align:center;color:var(--text-dim);font-size:16px;max-width:550px;margin:0 auto 48px}
+
+  /* ─── Feature Highlights (alternating) ─── */
+  .highlight-row{display:flex;align-items:center;gap:60px;margin-bottom:80px}
+  .highlight-row:last-child{margin-bottom:0}
+  .highlight-row.reverse{flex-direction:row-reverse}
+  .highlight-text{flex:1}
+  .highlight-text h3{font-size:28px;font-weight:800;margin-bottom:16px}
+  .highlight-text p{color:var(--text-dim);font-size:16px;margin-bottom:24px}
+  .highlight-tags{display:flex;gap:8px;flex-wrap:wrap}
+  .highlight-tags span{
+    padding:5px 14px;border-radius:20px;font-size:13px;font-weight:500;
+    background:rgba(160,197,229,.08);border:1px solid rgba(160,197,229,.15);
+    color:var(--accent)
+  }
+  .highlight-img{flex:1;max-width:480px}
+  .highlight-img img{
+    width:100%;border-radius:16px;box-shadow:0 8px 48px rgba(0,0,0,.35);
+    border:1px solid var(--border);transition:transform .4s,box-shadow .4s;cursor:zoom-in
+  }
+  .highlight-img img:hover{transform:translateY(-4px);box-shadow:0 16px 60px rgba(160,197,229,.15)}
+
+  /* ─── Rules Bento ─── */
+  .rules-bento{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .rule-tile{
+    background:var(--card);border:1px solid var(--border);border-radius:14px;
+    padding:28px 20px;text-align:center;font-weight:700;font-size:16px;
+    transition:all .3s;position:relative;overflow:hidden;
+    display:flex;flex-direction:column;align-items:center;gap:10px
+  }
+  .rule-tile::after{
+    content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+    width:0;height:3px;background:var(--accent);border-radius:3px 3px 0 0;
+    transition:width .3s
+  }
+  .rule-tile:hover{transform:translateY(-4px);border-color:rgba(160,197,229,.3);box-shadow:0 12px 36px rgba(0,0,0,.3)}
+  .rule-tile:hover::after{width:60%}
+  .rule-tile .tile-icon{width:32px;height:32px;display:block;margin-bottom:4px}
+  .rule-tile .tile-label{font-size:13px;color:var(--text-dim);font-weight:400;line-height:1.4}
+  /* SVG Icon System */
+  .ico{width:20px;height:20px;vertical-align:-3px;margin-right:5px;flex-shrink:0}
+  .ico-lg{width:34px;height:34px;vertical-align:-7px;margin-right:10px;flex-shrink:0}
+
+  /* ─── Settings Carousel ─── */
+  .settings-showcase{display:flex;align-items:center;gap:20px;justify-content:center}
+  .settings-carousel{
+    display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;padding-bottom:12px;
+    scrollbar-width:thin;scrollbar-color:var(--accent) transparent;
+    max-width:100%
+  }
+  .settings-carousel::-webkit-scrollbar{height:6px}
+  .settings-carousel::-webkit-scrollbar-track{background:transparent}
+  .settings-carousel::-webkit-scrollbar-thumb{background:var(--accent);border-radius:3px}
+  .settings-slide{
+    flex:0 0 auto;width:clamp(260px,30vw,340px);scroll-snap-align:start;
+    border-radius:14px;overflow:hidden;border:1px solid var(--border);
+    box-shadow:0 6px 28px rgba(0,0,0,.3);transition:transform .3s;cursor:zoom-in
+  }
+  .settings-slide:hover{transform:translateY(-6px)}
+  .settings-slide img{width:100%}
+  .settings-slide .slide-label{
+    text-align:center;padding:12px 10px;font-size:13px;color:var(--text-dim);
+    background:var(--card)
+  }
+
+  /* ─── Drag Features ─── */
+  .drag-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .drag-card{
+    background:var(--card);border:1px solid var(--border);border-radius:16px;
+    overflow:hidden;box-shadow:0 6px 28px rgba(0,0,0,.25);
+    transition:transform .3s,box-shadow .3s
+  }
+  .drag-card:hover{transform:translateY(-6px);box-shadow:0 14px 48px rgba(160,197,229,.1)}
+  .drag-card img{width:100%}
+  .drag-card .drag-caption{padding:18px 20px;font-size:15px;color:var(--text-dim)}
+  .drag-card .drag-caption strong{color:var(--text);display:block;margin-bottom:4px}
+  .drag-card.wide{grid-column:1/-1;max-width:480px;margin:0 auto}
+
+  /* ─── Export Grid ─── */
+  .export-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+  .export-card{text-align:center}
+  .export-card a{display:block}
+  .export-card img{
+    width:100%;border-radius:14px;border:1px solid var(--border);
+    box-shadow:0 4px 20px rgba(0,0,0,.25);transition:transform .3s,box-shadow .3s
+  }
+  .export-card img:hover{transform:scale(1.02);box-shadow:0 10px 36px rgba(160,197,229,.12)}
+  .export-card .exp-label{margin-top:12px;font-size:14px;color:var(--text-dim);font-weight:500}
+
+  /* ─── Usage ─── */
+  .usage-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .usage-box{
+    background:var(--card);border:1px solid var(--border);border-radius:16px;
+    padding:36px 32px;box-shadow:0 4px 24px rgba(0,0,0,.2)
+  }
+  .usage-box .step-badge{
+    display:inline-block;padding:4px 14px;border-radius:12px;font-size:12px;
+    font-weight:700;background:rgba(160,197,229,.12);color:var(--accent);
+    letter-spacing:1px;text-transform:uppercase;margin-bottom:16px
+  }
+  .usage-box h3{font-size:22px;font-weight:800;margin-bottom:16px;color:#fff}
+  .usage-box ol{padding-left:20px}
+  .usage-box li{margin-bottom:12px;font-size:15px;color:var(--text-dim)}
+
+  /* ─── Footer ─── */
+  footer{
+    position:relative;z-index:1;background:var(--bg-alt);
+    border-top:1px solid var(--border);text-align:center;padding:50px 24px;
+    font-size:14px;color:var(--text-dim);line-height:2.2
+  }
+  footer .divider{margin:24px auto;width:60px;height:2px;background:var(--accent);opacity:.3}
+
+  /* ─── Lightbox ─── */
+  .lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:9999;justify-content:center;align-items:center;cursor:zoom-out}
+  .lightbox.active{display:flex}
+  .lightbox img,.lightbox video{max-width:92vw;max-height:92vh;border-radius:8px}
+  .lightbox-close{position:absolute;top:24px;right:32px;color:#fff;font-size:44px;cursor:pointer;z-index:1;line-height:1}
+
+  /* ─── Responsive ─── */
+  @media(max-width:768px){
+    .highlight-row,.highlight-row.reverse{flex-direction:column;gap:32px}
+    .highlight-img{max-width:100%}
+    .rules-bento{grid-template-columns:repeat(2,1fr)}
+    .drag-grid{grid-template-columns:1fr}
+    .drag-card.wide{max-width:100%}
+    .export-grid{grid-template-columns:1fr}
+    .usage-grid{grid-template-columns:1fr}
+    .settings-carousel{gap:12px}
+    .settings-slide{width:75vw}
+    .hero-stats{gap:24px}
+    .stat-num{font-size:32px}
+  }
+</style>
+</head>
+<body>
+
+<!-- SVG Icon Sprite -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <defs>
+    <g id="ico-clipboard"><rect x="5" y="2" width="14" height="20" rx="3" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 7.5h6M9 11h6M9 14.5h3" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="ico-calendar"><rect x="4" y="5" width="16" height="17" rx="3" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 10h16M8 2v4M16 2v4" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="ico-person"><circle cx="12" cy="7" r="4" fill="none" stroke="#a0c5e5" stroke-width="1.8"/><path d="M4 22v-2c0-3.5 3-7 8-7s8 3.5 8 7v2" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="ico-check"><circle cx="12" cy="12" r="10" fill="none" stroke="#a0c5e5" stroke-width="1.8"/><path d="M7.5 12l3 3.5 6-7" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="ico-x"><circle cx="12" cy="12" r="10" fill="none" stroke="#a0c5e5" stroke-width="1.8"/><path d="M8 8l8 8M16 8l-8 8" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="ico-star"><path d="M12 2l2.5 7.5H22l-6 4.5 2.5 7.5L12 17l-6.5 4.5L8 14l-6-4.5h7.5z" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="ico-grid"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5" fill="none" stroke="#a0c5e5" stroke-width="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" fill="none" stroke="#a0c5e5" stroke-width="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" fill="none" stroke="#a0c5e5" stroke-width="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" fill="none" stroke="#a0c5e5" stroke-width="1.6"/></g>
+    <g id="ico-link"><path d="M17 7h-2.5a4.5 4.5 0 000 9H17" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/><path d="M7 7h2.5a4.5 4.5 0 010 9H7" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="ico-user"><circle cx="12" cy="8" r="4" fill="none" stroke="#a0c5e5" stroke-width="1.8"/><path d="M4 22c0-5.5 3.6-10 8-10s8 4.5 8 10" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="ico-attach"><path d="M6.5 17.5l9-9A3 3 0 0011.5 4L4 11.5a5.5 5.5 0 007.5 7.5l9-9A5 5 0 0013.5 2L6.5 9.5" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="ico-cycle"><path d="M5 12a7 7 0 017-7" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/><polyline points="8,5 12,5 12,9" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 12a7 7 0 01-7 7" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/><polyline points="16,19 12,19 12,15" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="ico-building"><path d="M4 21V8a1 1 0 011-1h14a1 1 0 011 1v13" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/><path d="M9 21V10h6v11" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="ico-chart"><rect x="5" y="13" width="3" height="8" rx="1" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/><rect x="10.5" y="8" width="3" height="13" rx="1" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/><rect x="16" y="4" width="3" height="17" rx="1" fill="none" stroke="#a0c5e5" stroke-width="1.8" stroke-linecap="round"/></g>
+  </defs>
+</svg>
+
+<!-- Floating Particles -->
+<div class="particles" id="particles"></div>
+
+<!-- ─── Hero ─── -->
+<header class="hero">
+  <div class="bokeh-bg">
+    <div class="bokeh"></div><div class="bokeh"></div><div class="bokeh"></div><div class="bokeh"></div>
+  </div>
+  <div class="hero-inner reveal visible">
+    <img class="hero-logo" src="logo.ico" alt="Logo" onerror="this.style.display='none'">
+    <h1>课程表生成器 &middot; 让排课<span>简单一点</span></h1>
+    <p class="tagline">专为学校打造的智能排课工具，几分钟搞定全校课表</p>
+    <div class="hero-badges">
+      <span class="badge">GPL v3.0</span>
+      <span class="badge">Python 3.9+</span>
+      <span class="badge">PySide6</span>
+    </div>
+    <div class="hero-actions">
+      <a class="hero-cta" href="https://gitcode.com/2603_96523924/School-Timetable-Generator/releases/download/v1.0.0/School-Timetable-Generator-v1.0.0-Windows-x86_64-Setup.exe">
+        <svg class="hero-cta-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M0 0h11.377v11.372H0zm12.623 0H24v11.372H12.623zM0 12.623h11.377V24H0zm12.623 0H24V24H12.623z"/></svg>
+        下载 Windows 版
+      </a>
+      <a class="hero-cta" href="https://github.com/hengdapi/School-Timetable-Generator" target="_blank">
+        <svg class="hero-cta-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23a11.52 11.52 0 013-.404c1.02.005 2.045.138 3 .404 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.605-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+      <a class="hero-cta" href="https://gitcode.com/2603_96523924/School-Timetable-Generator" target="_blank">
+        <svg class="hero-cta-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-.09 14.5c-2.37 0-4.41-1.83-4.41-4.5s2.04-4.5 4.41-4.5c1.43 0 2.68.63 3.54 1.63l-1.54 1.51c-.36-.54-.97-.88-1.99-.88-1.45 0-2.62 1.2-2.62 2.74s1.17 2.74 2.62 2.74c1.28 0 1.96-.66 2.24-1.25h-2.24v-1.99h4.12c.05.22.09.45.09.69 0 2.38-1.59 4.31-4.12 4.31z"/></svg>
+        GitCode
+      </a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><div class="stat-num">8</div><div class="stat-label">种排课规则</div></div>
+      <div class="stat"><div class="stat-num">4</div><div class="stat-label">份 Excel 导出</div></div>
+      <div class="stat"><div class="stat-num">0</div><div class="stat-label">学习成本</div></div>
+    </div>
+    <div class="scroll-hint">
+      <span>向下探索</span>
+      <div class="scroll-arrow"></div>
+    </div>
+  </div>
+</header>
+
+<!-- ─── 核心亮点 ─── -->
+<section>
+  <div class="sec-inner">
+    <div class="reveal"><div class="sec-label">Why This Tool</div></div>
+    <div class="reveal"><h2 class="sec-title">传统排课太痛苦？试试这个</h2></div>
+    <div class="reveal"><p class="sec-sub">从导入数据到生成课表，全程可视化操作，排课就像搭积木</p></div>
+
+    <div class="highlight-row reveal">
+      <div class="highlight-text">
+        <h3><svg class="ico-lg" viewBox="0 0 24 24"><use href="#ico-clipboard"/></svg>三步上手，零门槛</h3>
+        <p>导入课程信息 → 设置排课规则 → 一键生成，全程图形化引导，不需要写一行代码。</p>
+        <div class="highlight-tags">
+          <span>图形化界面</span><span>模板导入</span><span>即时预览</span>
+        </div>
+      </div>
+      <div class="highlight-img"><img src="主页.png" alt="主页" onclick="openLightbox(this.src)"></div>
+    </div>
+
+    <div class="highlight-row reverse reveal">
+      <div class="highlight-text">
+        <h3><svg class="ico-lg" viewBox="0 0 24 24"><use href="#ico-calendar"/></svg>可视化课表，直观呈现</h3>
+        <p>生成后可清晰查看每个班级的完整课程安排，右侧同步显示当前选中教师的个人课表，一目了然。</p>
+        <div class="highlight-tags">
+          <span>班级课表</span><span>教师课表</span><span>双栏联动</span>
+        </div>
+      </div>
+      <div class="highlight-img"><img src="生成-班级课表预览.png" alt="班级课表" onclick="openLightbox(this.src)"></div>
+    </div>
+
+    <div class="highlight-row reveal">
+      <div class="highlight-text">
+        <h3><svg class="ico-lg" viewBox="0 0 24 24"><use href="#ico-person"/></svg>教师视角，避免冲突</h3>
+        <p>自动检测教师时间冲突，右侧面板实时展示任课教师的完整安排，杜绝「一位老师同时出现在两个班」。</p>
+        <div class="highlight-tags">
+          <span>冲突检测</span><span>教师总览</span><span>颜色标识</span>
+        </div>
+      </div>
+      <div class="highlight-img"><img src="生成-显示课程能否交换及查看任课教师课表.png" alt="教师课表" onclick="openLightbox(this.src)"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 宣传视频 ─── -->
+<section class="alt">
+  <div class="sec-inner">
+    <div class="reveal"><div class="sec-label">Watch Demo</div></div>
+    <div class="reveal"><h2 class="sec-title">2 分钟快速了解</h2></div>
+    <div class="reveal"><p class="sec-sub">从设置到导出，看看实际操作用起来有多顺畅</p></div>
+    <div class="reveal" style="text-align:center">
+      <div style="position:relative;max-width:900px;margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 12px 60px rgba(0,0,0,.5);border:1px solid var(--border)">
+        <video controls poster="海报.png" preload="metadata" style="width:100%;display:block">
+          <source src="宣传视频720P.mp4" type="video/mp4">
+          您的浏览器不支持视频播放
+        </video>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 设置选项 ─── -->
+<section>
+  <div class="sec-inner">
+    <div class="reveal"><div class="sec-label">Settings</div></div>
+    <div class="reveal"><h2 class="sec-title">灵活配置，全面适配</h2></div>
+    <div class="reveal"><p class="sec-sub">学校名称、年级信息、上下课时间……所有细节都由你掌控</p></div>
+    <div class="reveal">
+      <div class="settings-carousel" id="settingsCarousel">
+        <div class="settings-slide"><img src="设置1.png" alt="设置1" onclick="openLightbox(this.src)"><div class="slide-label">导出 / 导入配置 &middot; 课程信息管理</div></div>
+        <div class="settings-slide"><img src="设置2.png" alt="设置2" onclick="openLightbox(this.src)"><div class="slide-label">课程数量 &middot; 年级设置</div></div>
+        <div class="settings-slide"><img src="设置3.png" alt="设置3" onclick="openLightbox(this.src)"><div class="slide-label">生成规则 &middot; 生成功能</div></div>
+        <div class="settings-slide"><img src="设置4.png" alt="设置4" onclick="openLightbox(this.src)"><div class="slide-label">活动信息设置</div></div>
+        <div class="settings-slide"><img src="设置5.png" alt="设置5" onclick="openLightbox(this.src)"><div class="slide-label">表格样式设置</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 生成规则 ─── -->
+<section class="alt">
+  <div class="sec-inner">
+    <div class="reveal"><div class="sec-label">Rule Engine</div></div>
+    <div class="reveal"><h2 class="sec-title">8 种规则，组合出完美课表</h2></div>
+    <div class="reveal"><p class="sec-sub">从「必须排在哪里」到「谁和谁不能同时排」，精准控制每一节课的落位</p></div>
+    <div class="reveal">
+      <div class="rules-bento">
+        <div class="rule-tile"><svg class="tile-icon" viewBox="0 0 24 24"><use href="#ico-check"/></svg>必须排<span class="tile-label">指定课程固定时段</span></div>
+        <div class="rule-tile"><svg class="tile-icon" viewBox="0 0 24 24"><use href="#ico-x"/></svg>不能排<span class="tile-label">锁定不可用的时间</span></div>
+        <div class="rule-tile"><svg class="tile-icon" viewBox="0 0 24 24"><use href="#ico-star"/></svg>优先排<span class="tile-label">尽量安排在优先时段</span></div>
+        <div class="rule-tile"><svg class="tile-icon" viewBox="0 0 24 24"><use href="#ico-grid"/></svg>同时最多排<span class="tile-label">限制并行班级数量</span></div>
+        <div class="rule-tile"><svg class="tile-icon" viewBox="0 0 24 24"><use href="#ico-link"/></svg>不能同时排<span class="tile-label">互斥课程错开安排</span></div>
+        <div class="rule-tile"><svg class="tile-icon" viewBox="0 0 24 24"><use href="#ico-user"/></svg>老师不能同时排<span class="tile-label">互斥教师错开</span></div>
+        <div class="rule-tile"><svg class="tile-icon" viewBox="0 0 24 24"><use href="#ico-attach"/></svg>连堂<span class="tile-label">同一课程连续安排</span></div>
+        <div class="rule-tile"><svg class="tile-icon" viewBox="0 0 24 24"><use href="#ico-cycle"/></svg>单双周<span class="tile-label">隔周交替排课</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 拖拽调整 ─── -->
+<section>
+  <div class="sec-inner">
+    <div class="reveal"><div class="sec-label">Drag & Drop</div></div>
+    <div class="reveal"><h2 class="sec-title">生成后也能任意调整</h2></div>
+    <div class="reveal"><p class="sec-sub">不满意自动结果？拖拽交换、暂存、合并，完全随心所欲</p></div>
+
+    <div class="drag-grid">
+      <div class="drag-card reveal">
+        <img src="拖拽交换课程.gif" alt="拖拽交换课程" onclick="openLightbox(this.src)">
+        <div class="drag-caption"><strong>拖拽交换课程</strong>直接拖拽即可交换两节课，系统智能检测是否允许交换并用颜色标识</div>
+      </div>
+      <div class="drag-card reveal">
+        <img src="课程暂存.gif" alt="课程暂存" onclick="openLightbox(this.src)">
+        <div class="drag-caption"><strong>课程暂存区</strong>把不确定放哪的课拖到暂存区，左侧红点提醒还有课程没排完</div>
+      </div>
+      <div class="drag-card wide reveal">
+        <img src="单双周课程合并.gif" alt="单双周课程合并" onclick="openLightbox(this.src)">
+        <div class="drag-caption"><strong>单双周课程合并</strong>拖拽两节课到同一格即可合并为单双周，也能随时拆分还原</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 导出 ─── -->
+<section class="alt">
+  <div class="sec-inner">
+    <div class="reveal"><div class="sec-label">Export</div></div>
+    <div class="reveal"><h2 class="sec-title">一键导出，四份 Excel 到位</h2></div>
+    <div class="reveal"><p class="sec-sub">班级课表、教师课表、全校汇总，点一下全部生成（点击图片下载示例）</p></div>
+    <div class="reveal">
+      <div class="export-grid">
+        <div class="export-card">
+          <a href="导出示例-各班课表（年级）.xlsx"><img src="导出-班级课表.png" alt="班级课表"></a>
+          <div class="exp-label"><svg class="ico" viewBox="0 0 24 24"><use href="#ico-clipboard"/></svg>班级课表</div>
+        </div>
+        <div class="export-card">
+          <a href="导出示例-教师课表（年级）.xlsx"><img src="导出-教师课表.png" alt="教师课表"></a>
+          <div class="exp-label"><svg class="ico" viewBox="0 0 24 24"><use href="#ico-person"/></svg>教师课表</div>
+        </div>
+        <div class="export-card">
+          <a href="导出示例-班级总表（横）.xlsx"><img src="导出-班级总表.png" alt="班级总表"></a>
+          <div class="exp-label"><svg class="ico" viewBox="0 0 24 24"><use href="#ico-building"/></svg>班级总表</div>
+        </div>
+        <div class="export-card">
+          <a href="导出示例-教师总表（横）.xlsx"><img src="导出-教师总表.png" alt="教师总表"></a>
+          <div class="exp-label"><svg class="ico" viewBox="0 0 24 24"><use href="#ico-chart"/></svg>教师总表</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 使用 & 致谢 ─── -->
+<section>
+  <div class="sec-inner">
+    <div class="reveal"><div class="sec-label">Get Started</div></div>
+    <div class="reveal"><h2 class="sec-title">两种方式，即刻开始</h2></div>
+    <div class="reveal"><p class="sec-sub">选你顺手的方式，几分钟就能跑起来</p></div>
+    <div class="usage-grid reveal">
+      <div class="usage-box">
+        <span class="step-badge">Developer</span>
+        <h3>方式一 · 从源码运行</h3>
+        <ol>
+          <li>安装 <a href="https://python.org/downloads" target="_blank">Python 3.9+</a></li>
+          <li>下载解压本项目，终端进入目录</li>
+          <li>执行 <code>pip install -r requirements.txt</code></li>
+          <li>运行 <code>python main.py</code></li>
+        </ol>
+      </div>
+      <div class="usage-box">
+        <span class="step-badge">One Click</span>
+        <h3>方式二 · 安装包即用</h3>
+        <ol>
+          <li>前往 <a href="https://github.com/hengdapi/School-Timetable-Generator/releases" target="_blank">Releases 页面</a></li>
+          <li>下载 <code>Setup.exe</code> 安装程序</li>
+          <li>双击安装，桌面生成快捷方式</li>
+          <li>或下载 <code>.zip</code> 解压即用</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Footer ─── -->
+<footer>
+  <div><strong>课程表生成器</strong> &mdash; School Timetable Generator</div>
+  <div>许可证：GPL v3.0 &middot; Copyright &copy; 2026 Hengxiaopi</div>
+  <div class="divider"></div>
+  <div style="font-size:13px">
+    使用 <a href="https://github.com/zhiyiYo/PyQt-Fluent-Widgets" target="_blank">QFluentWidgets</a>
+    &middot; <a href="https://github.com/Fairy-Oracle-Sanctuary/PySide6-Fluent-Widgets-Pro" target="_blank">PySide6-Fluent-Widgets-Pro</a>
+  </div>
+  <div style="font-size:13px;margin-top:6px">感谢 <a href="https://github.com/buBailai" target="_blank">buBailai</a> 提供宝贵数据与建议</div>
+</footer>
+
+<!-- ─── Lightbox ─── -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <span class="lightbox-close">&times;</span>
+  <img id="lightbox-img" src="" alt="">
+  <video id="lightbox-video" controls style="display:none"></video>
+</div>
+
+<script>
+// ─── Scroll Reveal ───
+const observer=new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible')})
+},{threshold:0.15,rootMargin:'0px 0px -40px 0px'})
+document.querySelectorAll('.reveal').forEach(el=>{
+  if(!el.classList.contains('visible'))observer.observe(el)
+})
+
+// ─── Particles ───
+(function spawnParticles(){
+  const c=document.getElementById('particles')
+  for(let i=0;i<18;i++){
+    const p=document.createElement('div')
+    p.classList.add('particle')
+    const s=Math.random()*4+2
+    p.style.width=s+'px';p.style.height=s+'px'
+    p.style.left=Math.random()*100+'%'
+    p.style.animationDuration=(Math.random()*12+10)+'s'
+    p.style.animationDelay=(Math.random()*12)+'s'
+    p.style.opacity=Math.random()*.25+.05
+    c.appendChild(p)
+  }
+})()
+
+// ─── Lightbox ───
+function openLightbox(src,isVideo){
+  const lb=document.getElementById('lightbox')
+  const img=document.getElementById('lightbox-img')
+  const video=document.getElementById('lightbox-video')
+  if(isVideo){
+    img.style.display='none';video.style.display='block';video.src=src;video.play()
+  }else{
+    video.style.display='none';video.pause();img.style.display='block';img.src=src
+  }
+  lb.classList.add('active')
+}
+function closeLightbox(){
+  document.getElementById('lightbox').classList.remove('active')
+  document.getElementById('lightbox-video').pause()
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLightbox()})
+</script>
+</body>
+</html>
