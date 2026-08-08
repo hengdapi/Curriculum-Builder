@@ -59,7 +59,7 @@ jobs:
 
       # ── 6. 生成 Inno Setup 脚本并编译安装包 ─────────
       - name: Install Inno Setup
-        run: choco install innosetup --version=6.3.0 -y --no-progress
+        run: choco install innosetup -y --no-progress
 
       - name: Generate Inno Setup script & compile installer
         shell: pwsh
@@ -78,7 +78,7 @@ jobs:
       - name: Create portable ZIP archive
         shell: pwsh
         run: |
-          $zipName = "School-Timetable-Generator-v$env:APP_VERSION-portable.zip"
+          $zipName = "School-Timetable-Generator-v$env:APP_VERSION-Windows-x86_64.zip"
           Compress-Archive -Path "main.dist\*" -DestinationPath $zipName
           Write-Output "Created: $zipName"
         env:
@@ -112,7 +112,7 @@ jobs:
           name: ${{ steps.version.outputs.tag }} — 课程表生成器
           body_path: changelog.md
           files: |
-            School-Timetable-Generator-v${{ steps.version.outputs.version }}-portable.zip
-            School-Timetable-Generator-v${{ steps.version.outputs.version }}-Setup.exe
+            School-Timetable-Generator-v${{ steps.version.outputs.version }}-Windows-x86_64.zip
+            School-Timetable-Generator-v${{ steps.version.outputs.version }}-Windows-x86_64-Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
