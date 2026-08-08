@@ -78,7 +78,7 @@ jobs:
       - name: Create portable ZIP archive
         shell: pwsh
         run: |
-          $zipName = "School-Timetable-Generator-v$env:APP_VERSION-portable.zip"
+          $zipName = "School-Timetable-Generator-v$env:APP_VERSION-Windows-x86_64.zip"
           Compress-Archive -Path "main.dist\*" -DestinationPath $zipName
           Write-Output "Created: $zipName"
         env:
@@ -112,7 +112,7 @@ jobs:
           name: ${{ steps.version.outputs.tag }} — 课程表生成器
           body_path: changelog.md
           files: |
-            School-Timetable-Generator-v${{ steps.version.outputs.version }}-portable.zip
-            School-Timetable-Generator-v${{ steps.version.outputs.version }}-Setup.exe
+            School-Timetable-Generator-v${{ steps.version.outputs.version }}-Windows-x86_64.zip
+            School-Timetable-Generator-v${{ steps.version.outputs.version }}-Windows-x86_64-Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

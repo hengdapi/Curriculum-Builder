@@ -47,4 +47,3 @@ else:
 
 
 os.system(" ".join(args))
-print("打包完成！")
