@@ -1,9 +1,9 @@
-import logging
+import os.path
 
 from style import *
 from generate_core import *
 from save_core import SaveThread
-from PySide6.QtCore import Qt,QByteArray
+from PySide6.QtCore import Qt,QByteArray,QSize
 from PySide6.QtWidgets import QFrame
 from PySide6 import QtGui
 from qfluentwidgets_pro.components.date_time.picker_base import SeparatorWidget
@@ -15,6 +15,83 @@ import traceback
 cfg=load_settings()
 colors={"Light":{"yes":QColor(150,255,150),"no":QColor(255,150,150),"curr":QColor(255,255,200)},
         "Dark":{"yes":QColor(100,200,100),"no":QColor(200,100,100),"curr":QColor(150,150,100)}}[darkdetect.theme()]
+
+class SaveTimetablePlan(MessageBoxBase):
+    def __init__(self, plan_time, parent=None):
+        super().__init__(parent=parent)
+        subheader("保存课程表方案",self,self.viewLayout)
+        write("方案名称（若选择已有方案名称则覆盖该方案）：",self,self.viewLayout,0)
+        self.name_input=EditableComboBox()
+        self.name_input.addItems(cfg.timetable_plans.value.keys())
+        self.name_input.setCompleter(QCompleter(cfg.timetable_plans.value.keys(),self.name_input))
+        self.name_input.setText(f"{plan_time} 保存的方案")
+        self.name_input.textChanged.connect(self.on_input_name)
+        add_widget(self.name_input,self.viewLayout)
+        write("方案描述：",self,self.viewLayout,0)
+        self.desc_input=LineEdit()
+        add_widget(self.desc_input,self.viewLayout)
+        self.yesButton.setText("保存方案")
+        self.cancelButton.setText("取消")
+        
+    def validate(self) -> bool:
+        if not self.name_input.text():
+            Toast.error("请输入方案名称","",duration=-1,parent=self)
+            return False
+        return True
+
+    def on_input_name(self):
+        if self.name_input.text() in cfg.timetable_plans.value:
+            self.desc_input.setText(cfg.timetable_plans.value[self.name_input.text()]["desc"])
+            self.yesButton.setText("覆盖方案")
+        else:
+            self.yesButton.setText("保存方案")
+
+class LoadTimetablePlan(MessageBoxBase):
+    def __init__(self,parent=None):
+        super().__init__(parent=parent)
+        subheader("加载课程表方案",self,self.viewLayout)
+        self.plan_list=RoundListWidget(self)
+        # 通过自定义 Delegate 设置项高度（不破坏原有 QSS）
+        self.delegate=RoundListItemDelegate(self.plan_list)
+        self.delegate.sizeHint=lambda option,idx:QSize(option.rect.width(),72)
+        self.plan_list.setItemDelegate(self.delegate)
+        for plan_name,plan_info in cfg.timetable_plans.value.items():
+            self.plan_list.addItem(f"{plan_name}\n保存时间：{plan_info['time']}\n描述：{plan_info['desc']}")
+        add_widget(self.plan_list,self.viewLayout,0)
+        self.yesButton.setText("加载方案")
+
+    def validate(self) -> bool:
+        if not self.plan_list.selectedItems():
+            Toast.error("请选择要加载的方案","",duration=-1,parent=self)
+            return False
+        plan_name=self.plan_list.selectedItems()[0].text().split("\n")[0]
+        if not os.path.exists(os.path.join(appdata,cfg.timetable_plans.value[plan_name]["filename"])):
+            Toast.error("方案文件已丢失，无法加载","",duration=-1,parent=self)
+            return False
+        return True
+
+class DelTimetablePlan(MessageBoxBase):
+    def __init__(self,parent=None):
+        super().__init__(parent=parent)
+        subheader("删除课程表方案",self,self.viewLayout)
+        write("在下方列表拖动或按住ctrl可多选：",self,self.viewLayout,0)
+        self.plan_list=RoundListWidget(self)
+        # 通过自定义 Delegate 设置项高度（不破坏原有 QSS）
+        self.delegate=RoundListItemDelegate(self.plan_list)
+        self.delegate.sizeHint=lambda option,idx:QSize(option.rect.width(),72)
+        self.plan_list.setItemDelegate(self.delegate)
+        self.plan_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        for plan_name,plan_info in cfg.timetable_plans.value.items():
+            self.plan_list.addItem(f"{plan_name}\n保存时间：{plan_info['time']}\n描述：{plan_info['desc']}")
+        add_widget(self.plan_list,self.viewLayout,0)
+        self.yesButton.setText("删除方案")
+
+    def validate(self) -> bool:
+        if not self.plan_list.selectedItems():
+            Toast.error("请选择要删除的方案","",duration=-1,parent=self)
+            return False
+        return True
+
 class Generate(QFrame):
     def __init__(self,parent=None):
         super().__init__(parent=parent)
@@ -49,17 +126,27 @@ class Generate(QFrame):
         add_widget(self.save_button,self.operation_layout)
         add_widget(SeparatorWidget(orient=Qt.Vertical),self.operation_layout)
 
-        self.import_button=button("导入课程表状态",self,self.operation_layout,0)
-        self.import_button.setToolTip("导入曾经导出的课程表状态，用于在曾经未排好的课程表基础上继续排课")
-        self.import_button.setIcon(FluentIcon.DOWNLOAD)
-        self.import_button.setFixedHeight(40)
-        self.import_button.clicked.connect(self.import_status)
+        self.load_plan_button=button("加载方案",self,self.operation_layout,0)
+        self.load_plan_button.setToolTip("加载曾经保存的课程表方案，用于在曾经未排好的课程表基础上继续排课")
+        self.load_plan_button.setIcon(FluentIcon.HISTORY)
+        self.load_plan_button.setFixedHeight(40)
+        self.load_plan_button.clicked.connect(self.load_plan)
 
-        self.export_button=button("导出课程表状态",self,self.operation_layout)
-        self.export_button.setToolTip("导出当前的课程表状态，用于保存当前正在编排的课程表数据，以便下次导入在当前状态下继续排课")
-        self.export_button.setIcon(FluentIcon.SHARE)
-        self.export_button.setFixedHeight(40)
-        self.export_button.clicked.connect(self.export_status)
+        self.save_plan_button=button("保存当前方案",self,self.operation_layout,0)
+        self.save_plan_button.setToolTip("保存当前的课程表方案，用于保存当前正在编排的课程表，以便下次加载在当前方案下继续排课")
+        self.save_plan_button.setIcon(FluentIcon.SAVE)
+        self.save_plan_button.setFixedHeight(40)
+        self.save_plan_button.clicked.connect(self.save_plan)
+
+        self.del_plan_button=button("删除方案",self,self.operation_layout)
+        self.del_plan_button.setToolTip("删除已保存的课程表方案")
+        self.del_plan_button.setIcon(FluentIcon.DELETE)
+        self.del_plan_button.setFixedHeight(40)
+        self.del_plan_button.clicked.connect(self.del_plan)
+        self.refresh_plan_button()
+
+        self.curr_plan=write("当前方案：无",self,self.operation_layout,0)
+        self.curr_plan.setFixedHeight(40)
         self.operation_layout.addStretch(1)
 
         self.progress_widget=QWidget()
@@ -144,15 +231,14 @@ class Generate(QFrame):
             byte_array=QByteArray.fromBase64(cfg.preview_splitter_state.value.encode())
             self.preview_splitter.restoreState(byte_array)
 
-        self.hidden_widgets=[self.save_button,self.preview_splitter,self.object_splitter,self.export_button]
+        self.hidden_widgets=[self.save_button,self.preview_splitter,self.object_splitter,self.save_plan_button]
         self.hide_widgets()
         # === 设置滚动区域内容 ===
         self.layout.addStretch(1)
-        self.first_generate=True
         main_layout.addWidget(view)
         # 检查是否已配置课程信息
         if not cfg.lessons_info.value:
-            InfoBar.error("请先在设置页面配置课程信息","",duration=-1,parent=self)
+            Toast.error("请先在设置页面配置课程信息","",duration=-1,parent=self)
             self.setEnabled(False)
 
     def resizeEvent(self, event: QtGui.QResizeEvent, /) -> None:
@@ -295,15 +381,13 @@ class Generate(QFrame):
             logging.info("生成按钮被点击")
             logging.debug(f"当前配置：{len(lesson_info.class_names)}个班级，{len(lesson_info.subjects)}个科目，{len(lesson_info.teachers)}个老师")
 
-            if self.first_generate:
-                self.first_generate=False
-            else:
-                msgbox=MessageBox("确定重新生成课程表？","重新生成会使当前的所有修改丢失，建议先导出当前课程表数据，是否继续重新生成？",self.parent().parent().parent())
+            if not lesson_info.saved:
+                msgbox=MessageBox("确定重新生成课程表？","重新生成会使当前的所有修改丢失，建议先保存当前课程表方案，是否继续重新生成？",self.parent().parent().parent())
                 if not msgbox.exec():
                     return
             # 禁用生成按钮防止重复点击
             self.generate_button.setEnabled(False)
-            self.import_button.setEnabled(False)
+            self.load_plan_button.setEnabled(False)
             self.progress_widget.show()
             self.progress_bar.setValue(0)
             self.progress_bar.setMaximum(len(lesson_info.class_names))
@@ -323,8 +407,9 @@ class Generate(QFrame):
 
     def on_generation_finished(self):
         logging.info("排课已完成")
+        lesson_info.saved=False
         self.generate_button.setEnabled(True)
-        self.import_button.setEnabled(True)
+        self.refresh_plan_button()
         self.generate_button.setText("重新生成")
         self.progress_widget.hide()
         self.show_widgets()
@@ -563,6 +648,7 @@ class Generate(QFrame):
             self.show_timetable(False)
             self.show_lesson_details(clas.get_lessons(target_time),target_time)
             self.set_timetables_size()
+            lesson_info.saved=False
             logging.info(f"暂存课程成功放入课表")
         except Exception as error:
             e=traceback.format_exc()
@@ -599,6 +685,7 @@ class Generate(QFrame):
                 clas.add_lesson(target_time,s.to_normal_lesson())
             self.show_timetable()
             self.show_lesson_details(source_subjects,target_time)
+            lesson_info.saved=False
             logging.info(f"课程移动成功")
         except Exception as error:
             e=traceback.format_exc()
@@ -616,6 +703,7 @@ class Generate(QFrame):
             else:
                 self.preview_object.remove_lesson(curr_time)
             self.show_timetable()
+            lesson_info.saved=False
             self.refresh_object_tree()
         except RuntimeError:
             pass
@@ -660,6 +748,7 @@ class Generate(QFrame):
             self.timetable_preview.setCurrentCell(target_time.lesson-1,target_time.day-1)
             self.show_lesson_details(curr_subjects,target_time)
             self.set_timetables_size()
+            lesson_info.saved=False
             logging.info(f"课程交换成功")
         except Exception as error:
             e=traceback.format_exc()
@@ -741,10 +830,10 @@ class Generate(QFrame):
             return
         logging.info(f"导出课程表文件名：{filename}")
 
-        self.save_infobar=InfoBar(InfoBarIcon.INFORMATION,"正在导出课程表，请稍候...","",parent=self,duration=-1)
+        self.save_Toast=Toast(InfoBarIcon.INFORMATION,"正在导出课程表，请稍候...","",parent=self,duration=-1)
         self.save_progress=IndeterminateProgressBar()
-        self.save_infobar.addWidget(self.save_progress)
-        self.save_infobar.show()
+        self.save_Toast.addWidget(self.save_progress)
+        self.save_Toast.show()
 
         name,ext=os.path.splitext(filename)
         save_thread=SaveThread(name,ext,self)
@@ -754,59 +843,89 @@ class Generate(QFrame):
         logging.info("导出线程已启动")
 
     def on_save_success(self):
-        self.save_infobar.close()
-        InfoBar.success("课程表导出成功！","",parent=self,duration=-1)
+        self.save_Toast.close()
+        Toast.success("课程表导出成功！","",parent=self,duration=-1)
 
     def on_save_error(self,error):
-        self.save_infobar.close()
-        InfoBar.error("课程表导出失败！",error,parent=self,duration=-1)
+        self.save_Toast.close()
+        Toast.error("课程表导出失败！",error,parent=self,duration=-1)
 
-    def export_status(self):
+    def refresh_plan_button(self):
+        self.load_plan_button.setEnabled(len(cfg.timetable_plans.value)>0)
+        self.del_plan_button.setEnabled(len(cfg.timetable_plans.value)>0)
+
+    def save_plan(self):
         try:
-            logging.info("导出课程表状态")
-            filename,_=QFileDialog.getSaveFileName(self,"导出课程表状态","","课程表状态(*.json)")
-            if not filename:
-                logging.info("用户取消导出")
+            logging.info("保存课程表方案")
+            plan_time=time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())
+            save_plan_msg=SaveTimetablePlan(plan_time,self.parent().parent().parent())
+            if not save_plan_msg.exec():
+                logging.info("用户取消保存")
                 return
-            logging.debug(f"导出课程表状态文件名：{filename}")
-            with open(filename,"w",encoding="utf-8") as f:
-                json.dump(lesson_info.classes,f,cls=LessonInfoEncoder,ensure_ascii=False)
-            logging.info("课程表状态导出成功")
-            InfoBar.success("课程表状态导出成功！",f"已导出至 {filename}",parent=self,duration=3000)
+            plan_name=save_plan_msg.name_input.text()
+            plan_desc=save_plan_msg.desc_input.text()
+            if plan_name not in cfg.timetable_plans.value:
+                # 过滤 Windows 文件名非法字符: \ / : * ? " < > |
+                plan_filename = plan_name.translate(str.maketrans({
+                    '\\': '_', '/': '_', ':': '_', '*': '_',
+                    '?': '_', '"': '_', '<': '_', '>': '_', '|': '_'
+                }))
+                while os.path.exists(os.path.join(appdata,"timetable_plans",plan_filename+".json")):
+                    plan_filename+="_"
+                plan_filename=os.path.join(appdata,"timetable_plans",plan_filename+".json")
+                cfg.timetable_plans.value[plan_name]={"desc":plan_desc,"time":plan_time,"filename":plan_filename}
+                save_settings()
+                if not os.path.exists(os.path.join(appdata,"timetable_plans")):
+                    os.mkdir(os.path.join(appdata,"timetable_plans"))
+                with open(plan_filename,"w",encoding="utf-8") as f:
+                    json.dump(lesson_info.classes,f,cls=LessonInfoEncoder,ensure_ascii=False)
+            else:
+                with open(cfg.timetable_plans.value[plan_name]["filename"],"w",encoding="utf-8") as f:
+                    json.dump(lesson_info.classes,f,cls=LessonInfoEncoder,ensure_ascii=False)
+            self.curr_plan.setText("当前方案："+plan_name)
+            lesson_info.saved=True
+            self.refresh_plan_button()
+            logging.info("课程表方案保存成功")
+            Toast.success("课程表方案保存成功！","",parent=self,duration=3000)
         except Exception as error:
             e=traceback.format_exc()
-            logging.critical(f"导出课程表状态出错：\n{e}")
+            logging.critical(f"保存课程表方案出错：\n{e}")
             show_error(self,error)
 
-    def import_status(self):
+    def load_plan(self):
         try:
-            logging.info("导入课程表状态")
-            filename,_=QFileDialog.getOpenFileName(self,"导入课程表状态","","课程表状态(*.json)")
-            if not filename:
-                logging.info("用户取消导入")
+            logging.info("加载课程表方案")
+            load_plan_msg=LoadTimetablePlan(self.parent().parent().parent())
+            if not load_plan_msg.exec():
+                logging.info("用户取消加载")
                 return
-            logging.debug(f"导入课程表状态文件名：{filename}")
+            if not lesson_info.saved:
+                msgbox=MessageBox("确定加载课程表方案？","加载方案会使当前的所有修改丢失，建议先保存当前课程表方案，是否继续加载方案？",self.parent().parent().parent())
+                if not msgbox.exec():
+                    return
+            plan_name=load_plan_msg.plan_list.selectedItems()[0].text().split("\n")[0]
+            filename=cfg.timetable_plans.value[plan_name]["filename"]
             with open(filename,"r",encoding="utf-8") as f:
-                status=json.load(f)
+                plan=json.load(f)
 
-            for class_name,timetable in status.items():
+            for class_name,timetable in plan.items():
                 if class_name not in lesson_info.class_names:
-                    InfoBar.error("课程表状态与当前设置不匹配",f"导入的课程表状态不是在当前设置下生成的",duration=-1,parent=self)
-                    logging.error("课程表状态导入失败")
+                    Toast.error("课程表方案与当前设置不匹配",f"加载的课程表方案不是在当前设置下生成的",duration=-1,parent=self)
+                    logging.error("课程表方案加载失败")
                     return
                 for time,subjects in timetable.items():
                     if Time(string=time).lesson>cfg.morning_class_num.value+cfg.afternoon_class_num.value:
-                        InfoBar.error("课程表状态与当前设置不匹配",f"导入的课程表状态不是在当前设置下生成的",duration=-1,parent=self)
-                        logging.error("课程表状态导入失败")
+                        Toast.error("课程表方案与当前设置不匹配",f"加载的课程表方案不是在当前设置下生成的",duration=-1,parent=self)
+                        logging.error("课程表方案加载失败")
                         return
                     for subject in subjects:
                         if subject not in lesson_info.subjects:
-                            InfoBar.error("课程表状态与当前设置不匹配",f"导入的课程表状态不是在当前设置下生成的",duration=-1,parent=self)
-                            logging.error("课程表状态导入失败")
+                            Toast.error("课程表方案与当前设置不匹配",f"加载的课程表方案不是在当前设置下生成的",duration=-1,parent=self)
+                            logging.error("课程表方案加载失败")
                             return
 
             lesson_info.__init__()
-            for class_name,timetable in status.items():
+            for class_name,timetable in plan.items():
                 for time,subjects in timetable.items():
                     if len(subjects)==1:
                         lesson_info.classes[class_name].add_lesson(Time(string=time),lesson_info.subjects[subjects[0]])
@@ -814,15 +933,39 @@ class Generate(QFrame):
                         lesson_info.classes[class_name].add_lesson(Time(string=time).sin_week,lesson_info.subjects[subjects[0]])
                         lesson_info.classes[class_name].add_lesson(Time(string=time).dou_week,lesson_info.subjects[subjects[1]])
 
-            logging.info("课程表状态导入成功")
-            InfoBar.success("课程表状态导入成功！",f"已从 {filename} 导入课程表状态",parent=self,duration=3000)
+            self.curr_plan.setText("当前方案："+plan_name)
+            logging.info("课程表方案加载成功")
+            Toast.success("课程表方案加载成功！","",parent=self,duration=3000)
 
             self.show_widgets()
             self.preview_splitter.hide()
             self.show_object_tree()
             self.show_timetable()
             self.layout.takeAt(self.layout.count()-1)
+            lesson_info.saved=True
         except Exception as error:
             e=traceback.format_exc()
-            logging.critical(f"导入课程表状态出错：\n{e}")
+            logging.critical(f"加载课程表方案出错：\n{e}")
+            show_error(self,error)
+
+    def del_plan(self):
+        try:
+            logging.info("删除课程表方案")
+            del_plan_msg=DelTimetablePlan(self.parent().parent().parent())
+            if not del_plan_msg.exec():
+                logging.info("用户取消删除")
+                return
+            plans=del_plan_msg.plan_list.selectedItems()
+            for plan in plans:
+                plan_name=plan.text().split("\n")[0]
+                filename=cfg.timetable_plans.value[plan_name]["filename"]
+                os.remove(filename)
+                del cfg.timetable_plans.value[plan_name]
+            save_settings()
+            self.refresh_plan_button()
+            logging.info("课程表方案删除成功")
+            Toast.success("课程表方案删除成功！","",parent=self,duration=3000)
+        except Exception as error:
+            e=traceback.format_exc()
+            logging.critical(f"删除课程表方案出错：\n{e}")
             show_error(self,error)

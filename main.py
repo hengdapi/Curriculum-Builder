@@ -6,6 +6,7 @@ from PySide6.QtCore import QLocale,QSize,QByteArray
 from qfluentwidgets_pro import MSFluentWindow,SplashScreen,FluentTranslator,setThemeColor,setTheme,Theme
 from qfluentwidgets_pro.common.icon import FluentIcon
 
+from locals import lesson_info
 from pages import home,settings,generate
 from qframelesswindow.utils import getSystemAccentColor
 from wr_settings import save_settings, cfg
@@ -46,9 +47,13 @@ class Window(MSFluentWindow):
         splashScreen.setIconSize(QSize(150,150))
         self.show()
 
-        self.addSubInterface(home.Home(),FluentIcon.HOME,"主页")
-        self.addSubInterface(settings.Settings(),FluentIcon.SETTING,"设置")
-        self.addSubInterface(generate.Generate(),FluentIcon.BRUSH,"生成")
+        self.home=home.Home()
+        self.settings=settings.Settings()
+        self.generate=generate.Generate()
+
+        self.addSubInterface(self.home,FluentIcon.HOME,"主页")
+        self.addSubInterface(self.settings,FluentIcon.SETTING,"设置")
+        self.addSubInterface(self.generate,FluentIcon.BRUSH,"生成")
         logging.debug("已添加所有子页面")
 
         splashScreen.finish()
@@ -72,6 +77,14 @@ class Window(MSFluentWindow):
     def closeEvent(self, e):
         """窗口关闭时保存 geometry 和最大化状态到配置"""
         try:
+            if not lesson_info.saved:
+                reply=QtWidgets.QMessageBox.question(self,"方案未保存","您当前的方案未保存，是否前往保存？\n若不保存，即使您已经导出了Excel版课程表，也无法再恢复当前方案了",QtWidgets.QMessageBox.Yes|QtWidgets.QMessageBox.No|QtWidgets.QMessageBox.Cancel)
+                if reply==QtWidgets.QMessageBox.Yes:
+                    self.generate.save_plan()
+                elif reply==QtWidgets.QMessageBox.Cancel:
+                    e.ignore()
+                    return
+
             is_max = self.isMaximized()
             cfg.window_maximized.value = is_max
 

@@ -134,6 +134,49 @@ class RuleMessageBox(MessageBoxBase):
             settings_error(self,"新规则与现有规则冲突或重复："+str(rule))
         return success
 
+class GradeMsgbox(MessageBoxBase):
+    def __init__(self,parent=None,edit=False,grade_name:str=""):
+        super().__init__(parent)
+        self.edit=edit
+        self.grade_name=grade_name
+        if self.edit:
+            self.classes=cfg.grades_info.value[grade_name]
+        subheader("添加年级" if not edit else "编辑年级",self,self.viewLayout)
+        write("年级名称：",self,self.viewLayout,0)
+        self.grade_name_input=LineEdit()
+        self.grade_name_input.setPlaceholderText("X年级")
+        if self.edit:
+            self.grade_name_input.setText(grade_name)
+        add_widget(self.grade_name_input,self.viewLayout)
+        write("所含班级：",self,self.viewLayout,0)
+        self.classes_combo=MultiSelectComboBox()
+        left_classes=set(lesson_info.class_names)
+        for classes in cfg.grades_info.value.values():
+            left_classes-=set(classes)
+        left_classes=list(left_classes)
+        if self.edit:
+            left_classes+=self.classes
+        left_classes.sort(key=lambda clas:lesson_info.class_names.index(clas))
+        self.classes_combo.addItems(left_classes)
+        if self.edit:
+            self.classes_combo.setSelectedIndices({left_classes.index(clas) for clas in self.classes})
+        add_widget(self.classes_combo,self.viewLayout)
+        self.yesButton.setText("添加年级")
+
+    def validate(self) -> bool:
+        curr_grade_name=self.grade_name_input.text()
+        if not curr_grade_name:
+            Toast.error("请输入年级名称","",parent=self,duration=2000)
+            return False
+        if not self.classes_combo.selectedItems():
+            Toast.error("请选择所含班级","",parent=self,duration=2000)
+            return False
+        grade_names=list(cfg.grades_info.value.keys())
+        if curr_grade_name!=self.grade_name and curr_grade_name in grade_names:
+            Toast.error("请勿设置名称重复的年级",f"名称“{curr_grade_name}”重复",parent=self,duration=2000)
+            return False
+        return True
+
 class Settings(QFrame):
     def save_cfg(self,attr:str,value):
         setattr(getattr(cfg,attr),"value",value)
@@ -161,7 +204,7 @@ class Settings(QFrame):
         if not filename:
             return
         shutil.copy("template.xlsx",filename)
-        os.system(f"start {filename}")
+        os.startfile(filename)
 
     def pick_lessons_info(self):
         user_info_file,_=QFileDialog.getOpenFileName(
@@ -201,15 +244,15 @@ class Settings(QFrame):
 
             logging.debug(f"解析完成：{len(old_classes)}个班级，{len(new_subjects)}个科目，{len(new_teachers)}个老师")
             diff_classes,diff_teachers,diff_subjects=diff_cfg(old_classes,new_teachers,new_subjects)
-            
+
             if diff_classes or diff_teachers or diff_subjects:
                 logging.warning(f"检测到差异：{len(diff_classes)}个班级, {len(diff_teachers)}个老师, {len(diff_subjects)}个科目")
-            
+
             dialog=MessageBox("确认要更新课程信息表吗？","以下班级在新课程信息表中不存在：\n"+"、".join(diff_classes)+"\n以下老师在新课程信息表中不存在：\n"+"、".join(diff_teachers)+"\n以下科目在新课程信息表中不存在：\n"+"、".join(diff_subjects)+"\n与以上信息相关的设置将被删除",self.parent().parent().parent())
             if not dialog.exec():
                 logging.info("用户取消更新课程信息")
                 return
-            
+
             cfg.lessons_info.value=new_lessons_info
             cfg.subjects_info.value=new_subjects
             cfg.teachers_info.value=new_teachers
@@ -217,7 +260,7 @@ class Settings(QFrame):
             save_settings()
             self.show_lessons_info()
             logging.info("课程信息表更新成功，准备重启应用")
-            InfoBar.success("课程信息表更新成功，应用将自动重启","",parent=self,duration=1500)
+            Toast.success("课程信息表更新成功，应用将自动重启","",parent=self,duration=1500)
             restart_app(1500)
         except Exception as error:
             e=traceback.format_exc()
@@ -363,7 +406,7 @@ class Settings(QFrame):
             return
         activity_info={}
         if [self.activity_table.item(r,0).text() for r in range(self.activity_table.rowCount())].count(self.activity_table.item(self.activity_table.currentRow(),0).text())>1:
-            InfoBar.error("请勿设置名称重复的活动",f"名称“{self.activity_table.item(self.activity_table.currentRow(),0).text()}”重复",parent=self,duration=2000)
+            Toast.error("请勿设置名称重复的活动",f"名称“{self.activity_table.item(self.activity_table.currentRow(),0).text()}”重复",parent=self,duration=2000)
             self.save_activity_lock=True
             self.activity_table.item(self.activity_table.currentRow(),0).setText(list(cfg.activity_info.value.keys())[self.activity_table.currentRow()])
             self.save_activity_lock=False
@@ -375,68 +418,71 @@ class Settings(QFrame):
         cfg.activity_info.value=activity_info
         save_settings()
 
+    def refresh_grade_button(self):
+        idx=list(cfg.grades_info.value.keys()).index(self.grade_table.item(self.grade_table.currentRow(),0).text())
+        self.edit_grade_button.setEnabled(bool(self.grade_table.selectedItems()))
+        self.del_grade_button.setEnabled(bool(self.grade_table.selectedItems()))
+        self.grade_up_button.setEnabled(bool(self.grade_table.selectedItems()) and idx!=0)
+        self.grade_down_button.setEnabled(bool(self.grade_table.selectedItems()) and idx!=len(cfg.grades_info.value)-1)
+
     def show_grades(self):
-        self.save_grade_lock=True
         self.grade_table.setRowCount(len(cfg.grades_info.value))
         self.grade_table.setFixedHeight(min(400,len(cfg.grades_info.value)*50+50))
         r=0
-        left_classes=set(lesson_info.class_names)
-        for classes in cfg.grades_info.value.values():
-            left_classes-=set(classes)
-        left_classes=list(left_classes)
-        left_classes.sort(key=lambda clas:lesson_info.class_names.index(clas))
         for grade,classes in cfg.grades_info.value.items():
-            item=QTableWidgetItem(grade)
-            item.setTextAlignment(Qt.AlignCenter)
-            self.grade_table.setItem(r,0,item)
-            curr_classes=classes+left_classes
-            if not self.grade_table.cellWidget(r,1):
-                classes_combo=MultiSelectComboBox()
-                classes_combo.setFixedSize(990,35)
-                classes_combo.addItems(curr_classes)
-                if classes:
-                    classes_combo.setSelectedIndices(set(range(len(classes))))
-                self.grade_table.setCellWidget(r,1,classes_combo)
-                classes_combo.selectionChanged.connect(self.save_grade)
-            else:
-                classes_combo:MultiSelectComboBox=self.grade_table.cellWidget(r,1)
-                classes_combo.clear()
-                classes_combo.addItems(curr_classes)
-                if classes:
-                    classes_combo.setSelectedIndices(set(range(len(classes))))
+            name_item=QTableWidgetItem(grade)
+            name_item.setTextAlignment(Qt.AlignCenter)
+            self.grade_table.setItem(r,0,name_item)
+            class_item=QTableWidgetItem(", ".join(classes))
+            class_item.setTextAlignment(Qt.AlignCenter)
+            self.grade_table.setItem(r,1,class_item)
             r+=1
-        self.save_grade_lock=False
 
     def add_grade(self):
-        cfg.grades_info.value[f"新年级{len(cfg.grades_info.value)+1}"]=[]
+        add_grade_msgbox=GradeMsgbox(self.parent().parent().parent())
+        if not add_grade_msgbox.exec():
+            return
+        cfg.grades_info.value[add_grade_msgbox.grade_name_input.text()]=[item.text for item in add_grade_msgbox.classes_combo.selectedItems()]
         save_settings()
         self.show_grades()
+
+    def edit_grade(self):
+        edit_grade_msgbox=GradeMsgbox(self.parent().parent().parent(),True,self.grade_table.item(self.grade_table.currentRow(),0).text())
+        if not edit_grade_msgbox.exec():
+            return
+        new_grade_info={}
+        for grade in cfg.grades_info.value:
+            if grade==self.grade_table.item(self.grade_table.currentRow(),0).text():
+                new_grade_info[edit_grade_msgbox.grade_name_input.text()]=[item.text for item in edit_grade_msgbox.classes_combo.selectedItems()]
+            else:
+                new_grade_info[grade]=cfg.grades_info.value[grade]
+        cfg.grades_info.value=new_grade_info
+        save_settings()
+        self.show_grades()
+        self.refresh_grade_button()
 
     def del_grade(self):
         cfg.grades_info.value.pop(self.grade_table.item(self.grade_table.currentRow(),0).text())
         save_settings()
         self.show_grades()
-        self.del_grade_button.setEnabled(bool(self.grade_table.selectedItems()))
+        self.refresh_grade_button()
 
-    def save_grade(self):
-        if self.save_grade_lock:
-            return
-        self.save_grade_lock=True
-        curr_grade_name=self.grade_table.item(self.grade_table.currentRow(),0).text()
-        grade_names=list(cfg.grades_info.value.keys())
-        if curr_grade_name in grade_names:
-            InfoBar.error("请勿设置名称重复的年级",f"名称“{curr_grade_name}”重复",parent=self.parent(),duration=2000)
-            self.grade_table.item(self.grade_table.currentRow(),0).setText(grade_names[self.grade_table.currentRow()])
-            self.save_grade_lock=False
-            return
+    def change_grade_pos(self,drct:str):
         new_grade_info={}
-        for grade in range(self.grade_table.rowCount()):
-            grade_name=self.grade_table.item(grade,0).text()
-            new_grade_info[grade_name]=[item.text for item in self.grade_table.cellWidget(grade,1).selectedItems()]
+        new_keys=list(cfg.grades_info.value.keys())
+        idx=new_keys.index(self.grade_table.item(self.grade_table.currentRow(),0).text())
+        if drct=="up":
+            new_keys[idx-1],new_keys[idx]=new_keys[idx],new_keys[idx-1]
+            self.grade_table.setCurrentIndex(self.grade_table.model().index(idx-1,0))
+        else:
+            new_keys[idx+1],new_keys[idx]=new_keys[idx],new_keys[idx+1]
+            self.grade_table.setCurrentIndex(self.grade_table.model().index(idx+1,0))
+        for grade in new_keys:
+            new_grade_info[grade]=cfg.grades_info.value[grade]
         cfg.grades_info.value=new_grade_info
         save_settings()
         self.show_grades()
-        self.save_grade_lock=False
+        self.refresh_grade_button()
 
     def export_settings(self):
         filename,_=QFileDialog.getSaveFileName(self,"导出设置","","JSON 文件(*.json)")
@@ -445,7 +491,7 @@ class Settings(QFrame):
             return
         logging.info(f"导出设置文件: {filename}")
         shutil.copy2(settings_file,filename)
-        InfoBar.success("成功导出设置",f"已导出至{filename}",parent=self)
+        Toast.success("成功导出设置",f"已导出至{filename}",parent=self)
         logging.info("设置导出成功")
 
     def import_settings(self):
@@ -456,8 +502,8 @@ class Settings(QFrame):
             return
         logging.info(f"导入设置文件: {filename}")
         shutil.copy2(filename,settings_file)
-        InfoBar.success("成功导入设置",f"已导入{filename}",parent=self,duration=3000)
-        InfoBar.info("应用将自动重启以使设置生效","",parent=self,duration=1500)
+        Toast.success("成功导入设置",f"已导入{filename}",parent=self,duration=3000)
+        Toast.info("应用将自动重启以使设置生效","",parent=self,duration=1500)
         logging.info("设置导入成功，准备重启应用")
         cfg=load_settings()
         restart_app(1500)
@@ -538,23 +584,41 @@ class Settings(QFrame):
             self.add_grade_button.setFixedWidth(200)
             self.add_grade_button.clicked.connect(self.add_grade)
 
-            self.del_grade_button=button("删除年级",self,grade_operations_layout,0)
-            self.del_grade_button.setIcon(FluentIcon.REMOVE)
+            self.edit_grade_button=button("编辑年级",self,grade_operations_layout,0)
+            self.edit_grade_button.setIcon(FluentIcon.EDIT)
+            self.edit_grade_button.setFixedWidth(200)
+            self.edit_grade_button.setEnabled(False)
+            self.edit_grade_button.clicked.connect(self.edit_grade)
+
+            self.del_grade_button=button("删除年级",self,grade_operations_layout,50)
+            self.del_grade_button.setIcon(FluentIcon.DELETE)
             self.del_grade_button.setFixedWidth(200)
             self.del_grade_button.setEnabled(False)
             self.del_grade_button.clicked.connect(self.del_grade)
 
-            self.save_grade_lock=True
+            self.grade_up_button=TransparentToolButton()
+            self.grade_up_button.setIcon(FluentIcon.UP)
+            self.grade_up_button.setToolTip("上移")
+            self.grade_up_button.setEnabled(False)
+            self.grade_up_button.clicked.connect(lambda :self.change_grade_pos("up"))
+            add_widget(self.grade_up_button,grade_operations_layout)
+
+            self.grade_down_button=TransparentToolButton()
+            self.grade_down_button.setIcon(FluentIcon.DOWN)
+            self.grade_down_button.setToolTip("下移")
+            self.grade_down_button.setEnabled(False)
+            self.grade_down_button.clicked.connect(lambda :self.change_grade_pos("down"))
+            add_widget(self.grade_down_button,grade_operations_layout)
+
             self.grade_table=LineTableWidget()
             self.grade_table.setColumnCount(2)
             self.grade_table.setHorizontalHeaderLabels(["年级名称","所含班级"])
             self.grade_table.setColumnWidth(1,1000)
             self.grade_table.verticalHeader().hide()
-            self.grade_table.clicked.connect(lambda :self.del_grade_button.setEnabled(bool(self.grade_table.selectedItems())))
-            self.grade_table.cellChanged.connect(self.save_grade)
+            self.grade_table.setEditTriggers(TableWidget.NoEditTriggers)
+            self.grade_table.clicked.connect(self.refresh_grade_button)
             self.show_grades()
             add_widget(self.grade_table,self.layout)
-            self.save_grade_lock=False
 
             grade_operations_layout.addStretch(1)
             add_widget(SeparatorWidget(orient=Qt.Horizontal),self.layout)
@@ -578,7 +642,7 @@ class Settings(QFrame):
 
             self.del_rule_button=button("删除规则",self,rule_list_layout)
             self.del_rule_button.setEnabled(False)
-            self.del_rule_button.setIcon(FluentIcon.REMOVE)
+            self.del_rule_button.setIcon(FluentIcon.DELETE)
             self.del_rule_button.setFixedWidth(200)
             self.del_rule_button.clicked.connect(self.del_rule)
             rule_list_layout.addStretch(1)
@@ -611,7 +675,7 @@ class Settings(QFrame):
             self.add_activity_button.clicked.connect(self.add_activity)
             self.add_activity_button.setFixedWidth(200)
             self.del_activity_button=button("删除活动",self,self.activity_operation_layout)
-            self.del_activity_button.setIcon(FluentIcon.REMOVE)
+            self.del_activity_button.setIcon(FluentIcon.DELETE)
             self.del_activity_button.setFixedWidth(200)
             self.del_activity_button.setEnabled(False)
             self.del_activity_button.clicked.connect(self.del_activity)

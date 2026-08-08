@@ -2,9 +2,9 @@ import logging,os
 import traceback
 
 from PySide6.QtCore import Qt
-from qfluentwidgets_pro import QConfig,RangeConfigItem,OptionsConfigItem,BoolValidator,ConfigItem,qconfig,RangeValidator,InfoBar,InfoBarPosition
+from qfluentwidgets_pro import QConfig,RangeConfigItem,OptionsConfigItem,BoolValidator,ConfigItem,qconfig,RangeValidator,Toast,ToastPosition
 
-settings_file=f"C:/Users/{os.getlogin()}/AppData/Roaming/School-Timetable-Generator/settings.json"
+settings_file=f"{os.environ["APPDATA"]}/School-Timetable-Generator/settings.json"
 class Settings(QConfig):
     morning_class_num=RangeConfigItem("table_style","morning_class_num",4,RangeValidator(1,10),restart=True)
     afternoon_class_num=RangeConfigItem("table_style","afternoon_class_num",2,RangeValidator(1,10),restart=True)
@@ -30,6 +30,8 @@ class Settings(QConfig):
     window_geometry=ConfigItem("ui","window_geometry",None)
     window_maximized=ConfigItem("ui","window_maximized",False)
 
+    timetable_plans=ConfigItem("timetable","timetable_plans",{})
+
 def load_settings():
     cfg=Settings()
     qconfig.load(settings_file, cfg)
@@ -46,12 +48,12 @@ def save_settings():
         logging.error(f"保存设置时出错：\n{e}")
 
 def settings_error(window,error):
-    InfoBar.error(
+    Toast.error(
         title='设置保存失败！',
         content=error,
         orient=Qt.Horizontal,
         isClosable=True,
-        position=InfoBarPosition.TOP,
+        position=ToastPosition.TOP,
         duration=-1,
         parent=window
     )

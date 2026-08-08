@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os,requests,json,webbrowser
+import requests,json,webbrowser
 import sys,copy
 from typing import Literal,Any
 from threading import Thread
@@ -9,12 +9,12 @@ from packaging import version
 import pandas as pd
 from PySide6.QtWidgets import QTableWidgetItem,QTableWidget,QApplication
 from PySide6.QtCore import QTimer
-from qfluentwidgets_pro import TableWidget,PrimaryPushButton,PushButton
+from qfluentwidgets_pro import TableWidget,PrimaryPushButton,PushButton,FluentIcon,TextEdit
 
 from wr_settings import *
 app_version="v1.1.0"
 logging.basicConfig(format="[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
-                    level=logging.DEBUG,
+                    level=logging.INFO,
                     filename=None,
                     encoding="utf-8")
 
@@ -22,6 +22,8 @@ file_handler = logging.FileHandler("log.txt", mode="a", encoding="utf-8")
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(logging.Formatter("[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s"))
 logging.getLogger().addHandler(file_handler)
+
+appdata=os.path.join(os.environ["APPDATA"],"School-Timetable-Generator")
 
 def check_update(window):
     try:
@@ -38,15 +40,23 @@ def check_update(window):
         if version.parse(response["tag_name"])<=version.parse(app_version):
             return
         logging.info(f"发现新版本：{response['tag_name']}")
-        window.update_msg=InfoBar.info("发现新版本",f"新版本 {response["tag_name"]} 现已发布，更新内容：{response["body"]}",duration=-1,parent=window)
+        window.update_msg=Toast.info("发现新版本",f"新版本 {response["tag_name"]} 现已发布，更新内容如下：",duration=-1,parent=window)
+        change_log=TextEdit()
+        change_log.setMarkdown(response["body"])
+        change_log.setReadOnly(True)
+        change_log.setFixedSize(280,response["body"].count("\n")*30)
+        change_log.setStyleSheet("background-color:transparent; border: none;")
+        window.update_msg.addWidget(change_log,alignment=Qt.AlignmentFlag.AlignLeft)
         view_update_button=PushButton()
+        view_update_button.setIcon(FluentIcon.INFO)
         view_update_button.setText("查看详细信息")
         view_update_button.clicked.connect(lambda:webbrowser.open(f"{project_url}/releases/{response["tag_name"]}"))
-        window.update_msg.addWidget(view_update_button)
+        window.update_msg.addWidget(view_update_button, alignment=Qt.AlignmentFlag.AlignLeft)
         download_button=PrimaryPushButton()
+        download_button.setIcon(FluentIcon.DOWNLOAD)
         download_button.setText("下载新版本")
         download_button.clicked.connect(lambda:download_update(window,response))
-        window.update_msg.addWidget(download_button)
+        window.update_msg.addWidget(download_button, alignment=Qt.AlignmentFlag.AlignLeft)
         window.update_msg.show()
 
     except Exception as err:
@@ -86,7 +96,7 @@ class UpdateThread(Thread):
 def download_update(window,response:dict):
     try:
         window.update_msg.close()
-        InfoBar.info("正在后台下载更新","下载完成后将为您自动运行安装包",duration=3000,parent=window)
+        Toast.info("正在后台下载更新","下载完成后将为您自动运行安装包",duration=3000,parent=window)
         update_thread=UpdateThread(response)
         logging.debug("更新线程已创建")
         update_thread.start()
@@ -124,7 +134,7 @@ def str2subject(subject_name:str)->Subject:
     return lesson_info.subjects[clean_name]
 
 def show_error(page,error:Exception):
-    InfoBar.error("发生错误",str(error)+"\n错误信息已存入日志，可通过首页按钮反馈",duration=-1,parent=page)
+    Toast.error("发生错误",str(error)+"\n错误信息已存入日志，可通过首页按钮反馈",duration=-1,parent=page)
 
 def restart_app(delay_ms=100):
     """重启程序"""
@@ -540,6 +550,8 @@ class Rule:
     def to_dict(self)->dict:
         ans={}
         for string in self.__dict__:
+            if self.__dict__[string] is None:
+                continue
             ans[str(string)]=str(self.__dict__[string])
         return ans
 
@@ -556,6 +568,7 @@ class LessonInfo:
         self.classes: dict[str,Class]={}
         self.class_names:list[str]=[]
         self.class_lst:list[Class]=[]
+        self.saved=True
         logging.info("正在解析课程信息...")
         
         lessons=cfg.lessons_info.value

@@ -5,3 +5,4 @@ darkdetect
 pywin32
 openpyxl
 pysidesix-frameless-window
+packaging

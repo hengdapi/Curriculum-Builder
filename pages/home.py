@@ -3,6 +3,7 @@ import webbrowser,time
 
 from locals import project_url,check_update
 from style import *
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QFrame,QVBoxLayout
 
 class IssueHelp(MessageBoxBase):
@@ -63,7 +64,7 @@ class Home(QFrame):
         layout.addStretch(1)  # 添加一个可伸缩的空间，值越大伸缩性越强
         self.setLayout(layout)
 
-        check_update(self)
+        QTimer.singleShot(500, lambda: check_update(self))
 
     def on_send_issue(self):
         help_messagebox=IssueHelp(self.parent().parent().parent())
