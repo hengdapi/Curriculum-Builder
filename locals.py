@@ -12,7 +12,8 @@ from PySide6.QtCore import QTimer
 from qfluentwidgets_pro import TableWidget,PrimaryPushButton,PushButton,FluentIcon,TextEdit
 
 from wr_settings import *
-app_version="v1.1.1"
+with open("app_version.txt","r",encoding="utf-8") as f:
+    app_version=f.read()
 logging.basicConfig(format="[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
                     level=logging.INFO,
                     filename=None,
