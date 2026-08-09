@@ -109,7 +109,7 @@ jobs:
         with:
           draft: true
           tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }} — 课程表生成器
+          name: ${{ steps.version.outputs.tag }}
           body_path: changelog.md
           files: |
             School-Timetable-Generator-v${{ steps.version.outputs.version }}-Windows-x86_64.zip
