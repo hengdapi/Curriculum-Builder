@@ -1,4 +1,4 @@
-import os
+import subprocess
 import sys
 
 if sys.platform == "win32":
@@ -66,4 +66,4 @@ else:
     ]
 
 
-os.system(" ".join(args))
+subprocess.run(" ".join(args))

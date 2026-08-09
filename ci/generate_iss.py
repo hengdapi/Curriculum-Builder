@@ -54,7 +54,7 @@ Filename: "{{app}}\\{{#MyAppExeName}}"; Description: "{{cm:LaunchProgram,{{#Stri
 '''
 
 def main():
-    with open('../installer.iss', 'w', encoding='ANSI') as f:
+    with open('installer.iss', 'w', encoding='ANSI') as f:
         f.write(ISS_TEMPLATE)
     print(f"[OK] installer.iss generated (version={VERSION})")
 
