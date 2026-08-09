@@ -6,7 +6,7 @@ import os
 
 VERSION = os.environ.get("APP_VERSION", "0.0.0")
 
-ISS_TEMPLATE = f'''#define MyAppName "课程表生成器"
+ISS_TEMPLATE = f'''#define MyAppName "School-Timetable-Generator"
 #define MyAppVersion "v{VERSION}"
 #define MyAppPublisher "Hengxiaopi"
 #define MyAppURL "https://school-timetable-generator.hengxiaopi.dpdns.org/"
