@@ -47,6 +47,10 @@ class Window(MSFluentWindow):
         splashScreen.setIconSize(QSize(150,150))
         self.show()
 
+        # 布局稳定后再恢复最大化状态
+        if cfg.window_maximized.value:
+            self.showMaximized()
+            logging.debug("恢复窗口最大化状态")
         self.home=home.Home()
         self.settings=settings.Settings()
         self.generate=generate.Generate()
@@ -58,11 +62,6 @@ class Window(MSFluentWindow):
 
         splashScreen.finish()
         logging.info("主窗口初始化完成")
-
-        # 布局稳定后再恢复最大化状态
-        if cfg.window_maximized.value:
-            self.showMaximized()
-            logging.debug("恢复窗口最大化状态")
 
     def _default_geometry(self):
         """没有记录时的默认尺寸和居中"""

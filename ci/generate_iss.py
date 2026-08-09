@@ -6,7 +6,7 @@ import os
 
 VERSION = os.environ.get("APP_VERSION", "0.0.0")
 
-ISS_TEMPLATE = f'''#define MyAppName "课程表生成器"
+ISS_TEMPLATE = f'''#define MyAppName "School-Timetable-Generator"
 #define MyAppVersion "v{VERSION}"
 #define MyAppPublisher "Hengxiaopi"
 #define MyAppURL "https://school-timetable-generator.hengxiaopi.dpdns.org/"
@@ -53,11 +53,9 @@ Filename: "{{app}}\\{{#MyAppExeName}}"; Description: "{{cm:LaunchProgram,{{#Stri
 '''
 
 def main():
-    output_path = os.path.join(os.path.dirname(__file__), '..', 'installer.iss')
-    with open(output_path, 'w', encoding='ANSI') as f:
+    with open('installer.iss', 'w', encoding='ANSI') as f:
         f.write(ISS_TEMPLATE)
     print(f"[OK] installer.iss generated (version={VERSION})")
-    print(f"     Output: {os.path.abspath(output_path)}")
 
 
 if __name__ == '__main__':
