@@ -31,9 +31,10 @@ SetupIconFile=logo.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+ShowLanguageDialog=no
 
 [Languages]
-Name: "chinesesimp"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimp"; MessagesFile: "compiler:Languages\\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{{cm:CreateDesktopIcon}}"; GroupDescription: "{{cm:AdditionalIcons}}"; Flags: unchecked
@@ -53,7 +54,7 @@ Filename: "{{app}}\\{{#MyAppExeName}}"; Description: "{{cm:LaunchProgram,{{#Stri
 '''
 
 def main():
-    with open('installer.iss', 'w', encoding='ANSI') as f:
+    with open('../installer.iss', 'w', encoding='ANSI') as f:
         f.write(ISS_TEMPLATE)
     print(f"[OK] installer.iss generated (version={VERSION})")
 
