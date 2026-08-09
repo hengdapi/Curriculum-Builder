@@ -1,7 +1,7 @@
 # coding=utf-8
 import webbrowser,time
 
-from locals import project_url,check_update
+from locals import project_url,check_update,app_version
 from style import *
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QFrame,QVBoxLayout
@@ -38,7 +38,7 @@ class Home(QFrame):
         self.introduce_label=write("此工具可以帮助你生成符合需求的课程表，现在请在设置页面上填写信息，生成一个课程表吧！",self,layout)
 
         subheader("关于",self,layout,10)
-        write(f"本程序是基于GPLv3协议的免费开源软件\ncopyright © 2026-{time.strftime("%Y", time.localtime())} Hengxiaopi",self,layout,10)
+        write(f"本程序是基于GPLv3协议的免费开源软件\ncopyright © 2026-{time.strftime("%Y", time.localtime())} Hengxiaopi\n当前版本：{app_version}",self,layout,10)
         self.project_link=button("打开项目地址",self,layout)
         self.project_link.setIcon(FluentIcon.LINK)
         self.project_link.setFixedSize(200, 40)

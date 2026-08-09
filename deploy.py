@@ -23,6 +23,7 @@ if sys.platform == "win32":
         "--include-data-dir=images=images",
         "--include-data-file=logo.ico=logo.ico",
         "--include-data-file=template.xlsx=template.xlsx",
+        "--include-data-file=app_version.txt=app_version.txt",
         # ── qfluentwidgets_pro 资源文件（QSS / SVG / i18n 等）──
         "--include-data-dir=qfluentwidgets_pro/_rc=qfluentwidgets_pro/_rc",
         # ── 显式包含所有自定义包（防止 CI 环境路径差异导致遗漏）──
