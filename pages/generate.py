@@ -347,9 +347,11 @@ class Generate(QFrame):
                 self.classes_top_item.child(g).setExpanded(False)
             self.teachers_top_item.setExpanded(False)
 
-    def set_timetables_size(self,resize=True):
+    def set_timetables_size(self):
+        if not hasattr(self,"preview_mode"):
+            return
         QApplication.processEvents()
-        if resize:
+        if self.preview_mode==0 or self.preview_mode==1:
             for row in range(self.timetable_preview.rowCount()):
                 self.timetable_preview.setRowHeight(row,(self.timetable_preview.height()-40)//self.timetable_preview.rowCount())
             for col in range(self.timetable_preview.columnCount()):
@@ -770,7 +772,7 @@ class Generate(QFrame):
                 self.store_lesson_subheader.hide()
                 self.lesson_storage_pane.hide()
                 if set_size:
-                    self.set_timetables_size(False)
+                    self.set_timetables_size()
             elif object_item.text(0)=="教师总表":
                 self.preview_mode=3
                 self.timetable_preview.setDragEnabled(False)
@@ -779,7 +781,7 @@ class Generate(QFrame):
                 self.store_lesson_subheader.hide()
                 self.lesson_storage_pane.hide()
                 if set_size:
-                    self.set_timetables_size(False)
+                    self.set_timetables_size()
             elif object_item.parent() is not None and object_item.parent().text(0) =="教师课表":
                 self.preview_mode=1
                 self.timetable_preview.setDragEnabled(False)
@@ -787,9 +789,9 @@ class Generate(QFrame):
                 self.lesson_storage_pane.hide()
                 self.preview_object=lesson_info.teachers[object_item.text(0)]
                 self.timetable_subheader.setText(f"{self.preview_object.name}老师 课程表")
+                display_df_in_table(self.timetable_preview,self.preview_object.timetable_dataframe)
                 if set_size:
                     self.set_timetables_size()
-                display_df_in_table(self.timetable_preview,self.preview_object.timetable_dataframe)
             elif object_item.parent().parent() is not None and object_item.parent().parent().data(0,Qt.UserRole) =="班级课表":
                 self.preview_mode=0
                 self.timetable_preview.setDragEnabled(True)
