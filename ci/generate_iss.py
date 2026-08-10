@@ -10,7 +10,7 @@ ISS_TEMPLATE = f'''#define MyAppName "School-Timetable-Generator"
 #define MyAppVersion "v{VERSION}"
 #define MyAppPublisher "Hengxiaopi"
 #define MyAppURL "https://school-timetable-generator.hengxiaopi.dpdns.org/"
-#define MyAppExeName "School-Timetable-Generator.exe"
+#define MyAppExeName "main.exe"
 
 [Setup]
 AppName={{#MyAppName}}
