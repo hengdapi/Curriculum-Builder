@@ -34,7 +34,7 @@ WizardStyle=modern
 ShowLanguageDialog=no
 
 [Languages]
-Name: "chinesesimp"; MessagesFile: "compiler:Languages\\ChineseSimplified.isl"
+Name: "chinesesimp"; MessagesFile: "compiler:ci\\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{{cm:CreateDesktopIcon}}"; GroupDescription: "{{cm:AdditionalIcons}}"; Flags: unchecked
