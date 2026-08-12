@@ -1,7 +1,9 @@
 # coding=utf-8
 import webbrowser,time
 
-from locals import project_url,check_update,app_version
+from PySide6.QtGui import QIcon
+
+from locals import project_url,check_update,app_version,github_url
 from style import *
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QFrame,QVBoxLayout
@@ -39,10 +41,22 @@ class Home(QFrame):
 
         subheader("关于",self,layout,10)
         write(f"本程序是基于GPLv3协议的免费开源软件\ncopyright © 2026-{time.strftime("%Y", time.localtime())} Hengxiaopi\n当前版本：{app_version}",self,layout,10)
-        self.project_link=button("打开项目地址",self,layout)
-        self.project_link.setIcon(FluentIcon.LINK)
-        self.project_link.setFixedSize(200, 40)
-        self.project_link.clicked.connect(lambda:webbrowser.open(project_url))
+        self.about_layout=QHBoxLayout(self)
+        layout.addLayout(self.about_layout)
+        self.project_link=DropDownPushButton(FluentIcon.GLOBE,"打开项目页面")
+        self.project_link.setFixedSize(170, 40)
+        project_menu=RoundMenu(parent=self.project_link)
+        project_menu.addAction(Action(QIcon("images/gitcode.png"),"GitCode",triggered=lambda:webbrowser.open(project_url)))
+        project_menu.addAction(Action(FluentIcon.GITHUB,"GitHub",triggered=lambda:webbrowser.open(github_url)))
+        self.project_link.setMenu(project_menu)
+        add_widget(self.project_link,self.about_layout,10)
+
+        self.check_update_button=button("检查更新",self,self.about_layout)
+        self.check_update_button.setIcon(FluentIcon.UPDATE)
+        self.check_update_button.setFixedSize(130, 40)
+        self.check_update_button.clicked.connect(lambda:check_update(self,True))
+        self.about_layout.addStretch(1)
+        layout.addSpacing(20)
 
         self.feedback_label=subheader("反馈",self,layout,10)
 
@@ -56,7 +70,7 @@ class Home(QFrame):
         self.save_log.clicked.connect(self.copy_log)
 
         self.send_issue=button("创建议题",self,self.feedback_layout,10)
-        self.send_issue.setIcon(FluentIcon.LINK)
+        self.send_issue.setIcon(FluentIcon.FEEDBACK)
         self.send_issue.setFixedSize(130, 40)
         self.send_issue.clicked.connect(self.on_send_issue)
         self.feedback_layout.addStretch(1)

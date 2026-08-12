@@ -25,8 +25,10 @@ file_handler.setFormatter(logging.Formatter("[%(levelname)s] %(asctime)s %(filen
 logging.getLogger().addHandler(file_handler)
 
 appdata=os.path.join(os.environ["APPDATA"],"School-Timetable-Generator")
+project_url="https://gitcode.com/2603_96523924/School-Timetable-Generator"
+github_url="https://github.com/hengdapi/School-Timetable-Generator"
 
-def check_update(window):
+def check_update(window,show_no_update=False):
     try:
         url="https://api.gitcode.com/api/v5/repos/2603_96523924/School-Timetable-Generator/releases/latest"
 
@@ -39,6 +41,8 @@ def check_update(window):
         logging.debug(f"检查更新api返回内容：{response}")
 
         if version.parse(response["tag_name"])<=version.parse(app_version):
+            if show_no_update:
+                Toast.info("无可用更新",f"当前已是最新版本：{app_version}",duration=3000,parent=window)
             return
         logging.info(f"发现新版本：{response['tag_name']}")
         window.update_msg=Toast.info("发现新版本",f"新版本 {response["tag_name"]} 现已发布，更新内容如下：",duration=-1,parent=window)
@@ -606,7 +610,7 @@ class LessonInfo:
 
         self.rules: list[Rule]=[]
         sys.setrecursionlimit(max(len(self.classes)*5*(cfg.morning_class_num.value+cfg.afternoon_class_num.value)*2,1000))
-        logging.info("课程信息解析完成")
+        logging.debug("课程信息解析完成")
 lesson_info=LessonInfo()
 
 priority_subjects:dict[Time,list[Subject]]={}
@@ -647,5 +651,3 @@ def del_cfg_diff(diff_classes:set,diff_teachers:set,diff_subjects:set)->None:
         if rule.get("subject") in diff_subjects or rule.get("subjectA") in diff_subjects or rule.get("subjectB") in diff_subjects or rule.get("teacherA") in diff_teachers or rule.get("teacherB") in diff_teachers:
             new_rules.remove(rule)
     cfg.rules.value=new_rules
-
-project_url="https://gitcode.com/2603_96523924/School-Timetable-Generator"

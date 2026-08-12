@@ -1,4 +1,6 @@
 # coding=utf-8
+import logging
+
 from PySide6.QtCore import QTime
 
 from qfluentwidgets_pro.components.date_time.picker_base import SeparatorWidget
@@ -45,9 +47,14 @@ class RuleMessageBox(MessageBoxBase):
             return True,None
         if not self.edit and new_rule in rules:
             return False,new_rule
-        if new_type in [Rule_type.set_time,Rule_type.avoid_time]:
+        if new_type==Rule_type.set_time:
             for rule in rules:
-                if rule.type in [Rule_type.set_time,Rule_type.avoid_time,Rule_type.priority_time] and (rule.time==new_rule.time or rule.subject==new_rule.subject):
+                if rule.type in [Rule_type.set_time,Rule_type.priority_time] and rule.time==new_rule.time or\
+                        rule.type==Rule_type.avoid_time and rule.time==new_rule.time and rule.subject==new_rule.subject:
+                    return False,rule
+        elif new_type==Rule_type.avoid_time:
+            for rule in rules:
+                if rule.type in [Rule_type.set_time,Rule_type.priority_time] and rule.subject==new_rule.subject and rule.time==new_rule.time:
                     return False,rule
         elif new_type==Rule_type.priority_time:
             for rule in rules:
@@ -285,7 +292,7 @@ class Settings(QFrame):
             save_settings()
             logging.info("成功添加规则")
         else:
-            logging.debug("用户取消添加规则")
+            logging.info("用户取消添加规则")
 
     def edit_rule(self):
         curr_item=self.rule_list.selectedItems()[0]

@@ -51,9 +51,6 @@ def settings_error(window,error):
     Toast.error(
         title='设置保存失败！',
         content=error,
-        orient=Qt.Horizontal,
-        isClosable=True,
-        position=ToastPosition.TOP,
         duration=-1,
         parent=window
     )
