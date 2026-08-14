@@ -1,40 +1,60 @@
-import random,time,traceback
+import random,time
 from locals import *
 from PySide6.QtCore import QThread,Signal
 
-def check(clas: Class,time: Time,subject: Subject) -> bool:
+def check(clas: Class,time: Time,subject: Subject,failed_reasons=None,conflict_lessons=None) -> bool:
+    if conflict_lessons is None:
+        conflict_lessons=[]
+    if failed_reasons is None:
+        failed_reasons=[]
     try:
         failed_reason=""
-        # logging.debug(f"检查能否在第{time.day}天第{time.lesson}节安排课程")
+        logging.debug(f"检查能否在 {clas.name} 的 {time} 安排 {subject}")
         if clas.get_teacher(subject).is_busy(time):
-            failed_reason=f"任课老师在第{time.day}天第{time.lesson}节有课"
-
+            teacher=clas.get_teacher(subject)
+            conflict_class=teacher.get_lesson(time)[0]
+            conflict_subject=teacher.get_lesson(time)[1]
+            if conflict_subject in conflict_class.get_lessons(time):
+                if conflict_class.get_lessons(time).index(conflict_subject)==0:
+                    if len(conflict_class.get_lessons(time))==1:
+                        conflict_time=time.all_week
+                    else:
+                        conflict_time=time.sin_week
+                else:
+                    conflict_time=time.dou_week
+                failed_reason=f"{subject} 的任课老师 {teacher} 在 {conflict_time} 有 {conflict_class} 的 {conflict_subject} 课"
+                conflict_lessons.append((conflict_class,conflict_time))
+        if subject in set_lessons:
+            failed_reason=f"{subject} 是固定课程"
+        time=time.all_week
         for rule in lesson_info.rules:
             # 不能排在指定时间
             if rule.type==Rule_type.avoid_time:
                 # 支持只写节次（如"上午第4节"）
                 if rule.subject==subject and time==rule.time:
-                    failed_reason=f"不能在第{time.day}天第{time.lesson}节排此课程"
+                    failed_reason=f"{subject} 不能排在 {time} "
             # 同一时间最多排几节课
             elif rule.type==Rule_type.set_num:
                 if rule.subject==subject and subject.get_time_num(time)>=int(rule.number):
-                    failed_reason=f"同一时间最多排 {rule.number} 节课"
+                    failed_reason=f"{clas.name} 同一时间 最多排 {rule.number} 节课"
             # 学科不能与另一学科同一时间
             elif rule.type==Rule_type.avoid_subject:
                 if subject==rule.subjectA and rule.subjectB.timetable.get(time):
-                    failed_reason=f"已经在第{time.day}天第{time.lesson}节安排了会引起冲突的课程"
+                    failed_reason=f"已经在 {time} 安排了会引起冲突的 {rule.subjectB}"
                 if subject==rule.subjectB and rule.subjectA.timetable.get(time):
-                    failed_reason=f"已经在第{time.day}天第{time.lesson}节安排了会引起冲突的课程"
+                    failed_reason=f"已经在 {time} 安排了会引起冲突的 {rule.subjectA}"
             # 老师不能与另一老师同一时间有课
             elif rule.type==Rule_type.avoid_teacher:
                 teacher=clas.get_teacher(subject)
                 teacherA = rule.teacherA
                 teacherB = rule.teacherB
                 if teacher==teacherA and teacherB.timetable.get(time):
-                    failed_reason=f"教师在第{time.day}天第{time.lesson}节会冲突"
+                    failed_reason=f"{clas.name} {subject} 的教师 {teacherA.name} 和 {teacherB.name} 在 {time} 会冲突"
                 elif teacher==teacherB and teacherA.timetable.get(time):
-                    failed_reason=f"教师在第{time.day}天第{time.lesson}节会冲突"
+                    failed_reason=f"{clas.name} {subject} 的教师 {teacherB.name} 和 {teacherA.name} 在 {time} 会冲突"
         if failed_reason:
+            if failed_reason not in failed_reasons:
+                failed_reasons.append(failed_reason)
             return False
         return True
     except:

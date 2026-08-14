@@ -8,7 +8,7 @@ from packaging import version
 
 import pandas as pd
 from PySide6.QtWidgets import QTableWidgetItem,QTableWidget,QApplication
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer,Qt
 from qfluentwidgets_pro import TableWidget,PrimaryPushButton,PushButton,FluentIcon,TextEdit
 
 from wr_settings import *
@@ -19,7 +19,11 @@ logging.basicConfig(format="[%(levelname)s] %(asctime)s %(filename)s %(funcName)
                     filename=None,
                     encoding="utf-8")
 
-file_handler = logging.FileHandler("log.txt", mode="a", encoding="utf-8")
+if os.path.exists("log.txt"):
+    log_file_size=os.path.getsize("log.txt")
+else:
+    log_file_size=0
+file_handler = logging.FileHandler("log.txt", mode="a" if log_file_size<=10*1024*1024 else "w", encoding="utf-8")
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(logging.Formatter("[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s"))
 logging.getLogger().addHandler(file_handler)
@@ -49,7 +53,7 @@ def check_update(window,show_no_update=False):
         change_log=TextEdit()
         change_log.setMarkdown(response["body"])
         change_log.setReadOnly(True)
-        change_log.setFixedSize(280,response["body"].count("\n")*30)
+        change_log.setFixedSize(280,round(len(response["body"])/16*25))
         change_log.setStyleSheet("background-color:transparent; border: none;")
         window.update_msg.addWidget(change_log,alignment=Qt.AlignmentFlag.AlignLeft)
         view_update_button=PushButton()
@@ -327,6 +331,16 @@ class Teacher:
         """
         self.timetable[time]=(clas,subject)
 
+    def get_lesson(self,time:Time):
+        if time.all_week in self.timetable:
+            return self.timetable[time.all_week]
+        elif time.dou_week in self.timetable:
+            return self.timetable[time.dou_week]
+        elif time.sin_week in self.timetable:
+            return self.timetable[time.sin_week]
+        else:
+            return None
+
     def is_busy(self,time:Time):
         """
         检查教师在特定时间是否有课
@@ -343,7 +357,8 @@ class Teacher:
         """
         移除教师在特定时间上的课程
         """
-        self.timetable.pop(time)
+        if time in self.timetable:
+            self.timetable.pop(time)
 
     @property
     def timetable_dataframe(self)->pd.DataFrame:
@@ -573,6 +588,7 @@ class LessonInfo:
         self.classes: dict[str,Class]={}
         self.class_names:list[str]=[]
         self.class_lst:list[Class]=[]
+        self.rules: list[Rule]=[]
         self.saved=True
         logging.info("正在解析课程信息...")
         
@@ -608,7 +624,6 @@ class LessonInfo:
         for subject in self.subjects.values():
             subject.continue_times={clas:0 for clas in self.class_lst}
 
-        self.rules: list[Rule]=[]
         sys.setrecursionlimit(max(len(self.classes)*5*(cfg.morning_class_num.value+cfg.afternoon_class_num.value)*2,1000))
         logging.debug("课程信息解析完成")
 lesson_info=LessonInfo()

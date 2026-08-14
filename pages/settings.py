@@ -189,8 +189,9 @@ class Settings(QFrame):
         setattr(getattr(cfg,attr),"value",value)
         save_settings()
 
-    def update_table_style(self):
-        save_settings()
+    def on_class_num_changed(self,time=None):
+        if time:
+            logging.info(f"修改{"上午" if time=="morning" else "下午"}课程数量")
         if cfg.morning_class_num.value+cfg.afternoon_class_num.value>len(cfg.lessons_time.value):
             for lesson in range(len(cfg.lessons_time.value)+1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1):
                 cfg.lessons_time.value[str(lesson)]=[[0,0],[0,0]]
@@ -255,7 +256,7 @@ class Settings(QFrame):
             if diff_classes or diff_teachers or diff_subjects:
                 logging.warning(f"检测到差异：{len(diff_classes)}个班级, {len(diff_teachers)}个老师, {len(diff_subjects)}个科目")
 
-            dialog=MessageBox("确认要更新课程信息表吗？","以下班级在新课程信息表中不存在：\n"+"、".join(diff_classes)+"\n以下老师在新课程信息表中不存在：\n"+"、".join(diff_teachers)+"\n以下科目在新课程信息表中不存在：\n"+"、".join(diff_subjects)+"\n与以上信息相关的设置将被删除",self.parent().parent().parent())
+            dialog=MessageBox("确认要更新课程信息表吗？","以下班级在新课程信息表中不存在：\n"+"、".join(diff_classes)+"\n以下老师在新课程信息表中不存在：\n"+"、".join(diff_teachers)+"\n以下科目在新课程信息表中不存在：\n"+"、".join(diff_subjects)+"\n与以上信息相关的设置将被删除",self)
             if not dialog.exec():
                 logging.info("用户取消更新课程信息")
                 return
@@ -280,7 +281,7 @@ class Settings(QFrame):
 
     def add_rule(self):
         logging.info("用户点击添加规则按钮")
-        rule_dialog=RuleMessageBox(self.parent().parent().parent())
+        rule_dialog=RuleMessageBox(self)
         if rule_dialog.exec():
             new_rule=rule_dialog.new_rule
             lesson_info.rules.append(new_rule)
@@ -298,7 +299,7 @@ class Settings(QFrame):
         curr_item=self.rule_list.selectedItems()[0]
         curr_rule=curr_item.data(Qt.UserRole)
         logging.info("用户编辑规则")
-        rule_dialog=RuleMessageBox(self.parent().parent().parent(),True,curr_rule)
+        rule_dialog=RuleMessageBox(self,True,curr_rule)
         if rule_dialog.exec():
             new_rule=rule_dialog.new_rule
             lesson_info.rules.append(new_rule)
@@ -356,6 +357,7 @@ class Settings(QFrame):
         save_settings()
 
     def show_lesson_time_group(self):
+        group_idx=self.layout.indexOf(self.lesson_length_group)
         self.lesson_length_group.hide()
         self.lesson_length_group.deleteLater()
         status=self.lesson_length_group.isExpand
@@ -374,7 +376,7 @@ class Settings(QFrame):
             lesson_length_card.hBoxLayout.addWidget(end_time)
             lesson_length_card.hBoxLayout.addSpacing(20)
             self.lesson_length_group.addGroupWidget(lesson_length_card)
-        self.layout.insertWidget(self.layout.indexOf(self.school_name_card)+1,self.lesson_length_group)
+        self.layout.insertWidget(group_idx,self.lesson_length_group)
         self.lesson_length_group.setExpand(status)
 
     def show_activities(self):
@@ -446,7 +448,7 @@ class Settings(QFrame):
             r+=1
 
     def add_grade(self):
-        add_grade_msgbox=GradeMsgbox(self.parent().parent().parent())
+        add_grade_msgbox=GradeMsgbox(self)
         if not add_grade_msgbox.exec():
             return
         cfg.grades_info.value[add_grade_msgbox.grade_name_input.text()]=[item.text for item in add_grade_msgbox.classes_combo.selectedItems()]
@@ -454,7 +456,7 @@ class Settings(QFrame):
         self.show_grades()
 
     def edit_grade(self):
-        edit_grade_msgbox=GradeMsgbox(self.parent().parent().parent(),True,self.grade_table.item(self.grade_table.currentRow(),0).text())
+        edit_grade_msgbox=GradeMsgbox(self,True,self.grade_table.item(self.grade_table.currentRow(),0).text())
         if not edit_grade_msgbox.exec():
             return
         new_grade_info={}
@@ -575,11 +577,15 @@ class Settings(QFrame):
 
             # 设置每天上午和下午的课程数量
             self.morning_class_num=RangeSettingCard(cfg.morning_class_num,FluentIcon.FLAG,title="每天上午上课数量",content="学校每天上午的上课数量")
-            self.morning_class_num.valueChanged.connect(self.update_table_style)
+            self.morning_class_num.valueChanged.connect(lambda :self.on_class_num_changed("morning"))
             add_widget(self.morning_class_num,self.layout,0)
             self.afternoon_class_num=RangeSettingCard(cfg.afternoon_class_num,FluentIcon.FLAG,title="每天下午上课数量",content="学校每天下午的上课数量")
-            self.afternoon_class_num.valueChanged.connect(self.update_table_style)
-            add_widget(self.afternoon_class_num,self.layout)
+            self.afternoon_class_num.valueChanged.connect(lambda :self.on_class_num_changed("afternoon"))
+            add_widget(self.afternoon_class_num,self.layout,0)
+
+            self.lesson_length_group=ExpandGroupSettingCard(FluentIcon.STOP_WATCH,"课程起止时间（显示在课时下方）")
+            add_widget(self.lesson_length_group,self.layout)
+            self.on_class_num_changed()
 
             subheader("年级信息",self,self.layout)
 
@@ -712,12 +718,8 @@ class Settings(QFrame):
             self.school_name.textChanged.connect(lambda :self.save_cfg("school_name",self.school_name.text()))
             add_widget(self.school_name_card,self.layout,0)
 
-            self.lesson_length_group=ExpandGroupSettingCard(FluentIcon.STOP_WATCH,"课程起止时间（显示在课时下方）")
-            add_widget(self.lesson_length_group,self.layout,0)
-
             # 设置是否显示教师姓名和表格排版方式
             show_teachers=SwitchSettingCard(configItem=cfg.show_teachers,icon=FluentIcon.TAG,title="显示教师姓名",content="在课程名称下方标注任课教师姓名")
-            show_teachers.checkedChanged.connect(self.update_table_style)
             add_widget(show_teachers,self.layout,0)
 
             text_style=SettingCard(FluentIcon.FONT,"文字样式","设置课程表文字样式")
@@ -732,7 +734,6 @@ class Settings(QFrame):
             self.text_size.valueChanged.connect(lambda :self.save_cfg("text_size",self.text_size.value()))
             add_widget(self.text_size,text_style.hBoxLayout)
             add_widget(text_style,self.layout)
-            self.update_table_style()
 
             self.scroll_area.setWidget(view)
             main_layout.addWidget(self.scroll_area)

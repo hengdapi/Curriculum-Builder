@@ -1,9 +1,10 @@
+import logging
 import os.path
 
 from style import *
 from generate_core import *
 from save_core import SaveThread
-from PySide6.QtCore import Qt,QByteArray,QSize
+from PySide6.QtCore import Qt,QByteArray,QSize,QRectF
 from PySide6.QtWidgets import QFrame
 from PySide6 import QtGui
 from qfluentwidgets_pro.components.date_time.picker_base import SeparatorWidget
@@ -13,8 +14,48 @@ import traceback
 
 # 读取配置文件
 cfg=load_settings()
-colors={"Light":{"yes":QColor(150,255,150),"no":QColor(255,150,150),"curr":QColor(255,255,200)},
-        "Dark":{"yes":QColor(100,200,100),"no":QColor(200,100,100),"curr":QColor(150,150,100)}}[darkdetect.theme()]
+colors={"Light":{"yes":QColor(150,255,150),"no":QColor(255,150,150),"curr":QColor(255,255,200),"same":QColor(170,170,255)},
+        "Dark":{"yes":QColor(100,200,100),"no":QColor(200,100,100),"curr":QColor(170,170,100),"same":QColor(170,170,255)}}[darkdetect.theme()]
+
+class ColorSwatch(QWidget):
+    """抗锯齿圆角色块（解决 QSS 圆角在高分屏上的锯齿问题）"""
+
+    def __init__(self, color: QColor, size: int = 16, parent=None):
+        super().__init__(parent)
+        self._color = QColor(color)
+        self.setFixedSize(size, size)
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        painter.setPen(QtGui.QPen(QColor(127, 127, 127, 102), 1))
+        painter.setBrush(self._color)
+        painter.drawRoundedRect(rect, 4, 4)
+
+def make_legend(parent=None) -> QWidget:
+    """构建课表高亮配色图例（色块+说明文字），颜色与课表高亮保持一致"""
+    legend = QWidget(parent)
+    layout = QHBoxLayout(legend)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(16)
+    for key, text in (
+        ("yes", "可以交换"),
+        ("no", "不可交换"),
+        ("curr", "当前选中"),
+        ("same", "相同学科"),
+    ):
+        item = QWidget(legend)
+        item_layout = QHBoxLayout(item)
+        item_layout.setContentsMargins(0, 0, 0, 0)
+        item_layout.setSpacing(6)
+        swatch = ColorSwatch(colors[key], parent=item)
+        text_label = BodyLabel(text, item)
+        text_label.setFont(fonts.button)
+        item_layout.addWidget(swatch)
+        item_layout.addWidget(text_label)
+        layout.addWidget(item)
+    return legend
 
 class SaveTimetablePlan(MessageBoxBase):
     def __init__(self, plan_time, parent=None):
@@ -31,6 +72,7 @@ class SaveTimetablePlan(MessageBoxBase):
         self.desc_input=LineEdit()
         add_widget(self.desc_input,self.viewLayout)
         self.yesButton.setText("保存方案")
+        self.yesButton.setIcon(FluentIcon.SAVE)
         self.cancelButton.setText("取消")
         
     def validate(self) -> bool:
@@ -59,6 +101,7 @@ class LoadTimetablePlan(MessageBoxBase):
             self.plan_list.addItem(f"{plan_name}\n保存时间：{plan_info['time']}\n描述：{plan_info['desc']}")
         add_widget(self.plan_list,self.viewLayout,0)
         self.yesButton.setText("加载方案")
+        self.yesButton.setIcon(FluentIcon.HISTORY)
 
     def validate(self) -> bool:
         if not self.plan_list.selectedItems():
@@ -85,6 +128,7 @@ class DelTimetablePlan(MessageBoxBase):
             self.plan_list.addItem(f"{plan_name}\n保存时间：{plan_info['time']}\n描述：{plan_info['desc']}")
         add_widget(self.plan_list,self.viewLayout,0)
         self.yesButton.setText("删除方案")
+        self.yesButton.setIcon(FluentIcon.DELETE)
 
     def validate(self) -> bool:
         if not self.plan_list.selectedItems():
@@ -92,12 +136,32 @@ class DelTimetablePlan(MessageBoxBase):
             return False
         return True
 
+class ForceExchangeMsgbox(MessageBoxBase):
+    def __init__(self,failed_reasons:list[str],conflict_lessons:list[tuple[Class,Time]], parent=None):
+        super().__init__(parent=parent)
+        subheader("强制调课",self,self.viewLayout)
+        write("由于以下原因，您的调课操作无法完成：",self,self.viewLayout,0)
+        self.reason_list=RoundListWidget()
+        self.reason_list.setFixedHeight(len(failed_reasons)*50)
+        self.reason_list.addItems(failed_reasons)
+        add_widget(self.reason_list,self.viewLayout,0)
+        write("是否要强制调课？\n强制调课后，以下导致冲突的课程将会自动放在暂存区（左侧会有小红点提示）：",self,self.viewLayout,0)
+        self.conflict_list=RoundListWidget()
+        self.conflict_list.setFixedHeight(len(conflict_lessons)*50)
+        for lesson in conflict_lessons:
+            self.conflict_list.addItem(f"{lesson[0]} {lesson[1]} {lesson[0].get_lessons(lesson[1])[0 if lesson[1].all or lesson[1].sin else 1]}")
+        add_widget(self.conflict_list,self.viewLayout,0)
+        self.yesButton.setText("强制调课")
+        self.yesButton.setIcon(FluentIcon.SYNC)
+
 class Generate(QFrame):
     def __init__(self,parent=None):
         super().__init__(parent=parent)
         self.setObjectName("Generate")
         main_layout = QVBoxLayout(self)
         self.check_result:dict[Time,bool]={}
+        self.failed_reasons:dict[Time,list]={}
+        self.conflict_lessons:dict[Time,list[tuple[Class,Time]]]={}
 
         # === 创建内容容器 ===
         view=QWidget()
@@ -182,7 +246,13 @@ class Generate(QFrame):
 
         self.timetable_pane=QWidget()
         self.timetable_layout=QVBoxLayout(self.timetable_pane)
-        self.timetable_subheader=subheader("班级课程表",self,self.timetable_layout,10)
+        self.timetable_header_layout=QHBoxLayout()
+        self.timetable_layout.addLayout(self.timetable_header_layout)
+        self.timetable_subheader=subheader("班级课程表",self,self.timetable_header_layout,10)
+        self.timetable_header_layout.addStretch(1)
+        self.timetable_legend=make_legend(self.timetable_pane)
+        self.timetable_legend.hide()
+        self.timetable_header_layout.addWidget(self.timetable_legend)
         self.timetable_preview=TimeTableWidget(self)
         self.timetable_preview.setContextMenuPolicy(Qt.CustomContextMenu)
         self.timetable_preview.clicked.connect(self.on_timetable_preview_clicked)
@@ -193,7 +263,7 @@ class Generate(QFrame):
         self.timetable_preview.table_dropped_on_empty.connect(self.move_lesson_to_empty)
         self.timetable_preview.lesson_storage.connect(self.store_lesson)
         add_widget(self.timetable_preview,self.timetable_layout,0)
-        self.store_lesson_subheader=subheader("课程暂放区",self,self.timetable_layout,10)
+        self.store_lesson_subheader=subheader("课程暂存区",self,self.timetable_layout,10)
         self.stored_lesson_cards:list[DraggableLessonCard]=[]
         self._active_stored_subject=None  # 当前选中高亮的暂存课程名
         self.lesson_storage_pane=LessonStoragePane(self)
@@ -384,7 +454,7 @@ class Generate(QFrame):
             logging.debug(f"当前配置：{len(lesson_info.class_names)}个班级，{len(lesson_info.subjects)}个科目，{len(lesson_info.teachers)}个老师")
 
             if not lesson_info.saved:
-                msgbox=MessageBox("确定重新生成课程表？","重新生成会使当前的所有修改丢失，建议先保存当前课程表方案，是否继续重新生成？",self.parent().parent().parent())
+                msgbox=MessageBox("确定重新生成课程表？","重新生成会使当前的所有修改丢失，建议先保存当前课程表方案，是否继续重新生成？",self)
                 if not msgbox.exec():
                     return
             # 禁用生成按钮防止重复点击
@@ -415,33 +485,45 @@ class Generate(QFrame):
         self.generate_button.setText("重新生成")
         self.progress_widget.hide()
         self.show_widgets()
-        self.preview_splitter.hide()
         self.show_object_tree()
         self.show_timetable()
         self.layout.takeAt(self.layout.count()-1)
 
-    def check_exchange(self,clas:Class,curr_time:Time,target_time:Time,source_subjects:list[Subject],target_subjects:list[Subject])->bool:
+    def check_exchange(self,clas:Class,curr_time:Time,target_time:Time,source_subjects:list[Subject],target_subjects:list[Subject],failed_reasons:list,conflict_lessons:list)->bool:
         # 两个半周课程：检查能否拼接
-        if len(source_subjects)==1 and source_subjects[0] in half_subjects and len(target_subjects)==1 and target_subjects[0] in half_subjects and check(clas,target_time.dou_week,source_subjects[0]):
+        if len(source_subjects)==1 and source_subjects[0] in half_subjects and len(target_subjects)==1 and target_subjects[0] in half_subjects and check(clas,target_time.dou_week,source_subjects[0],failed_reasons):
             return True
         # 目标位置是空位：直接检查源课程能否放入
         if not target_subjects:
             if len(source_subjects)==1:
-                return check(clas,target_time,source_subjects[0])
+                return check(clas,target_time,source_subjects[0],failed_reasons,conflict_lessons)
             elif len(source_subjects)==2:
-                return check(clas,target_time,source_subjects[0]) and check(clas,target_time,source_subjects[1])
+                return check(clas,target_time,source_subjects[0],failed_reasons,conflict_lessons) and check(clas,target_time,source_subjects[1],failed_reasons,conflict_lessons)
             return False
         # 源位置是空位：理论上不应该发生
         if not source_subjects:
             return False
-        if target_subjects[0] in [lesson[1] for lesson in set_lessons] or source_subjects[0] in [lesson[1] for lesson in set_lessons]:
+        if target_subjects[0] in [lesson[1] for lesson in set_lessons]:
+            failed_reasons.append(f"{target_subjects[0]}是固定课程")
+            return False
+        if source_subjects[0] in [lesson[1] for lesson in set_lessons]:
+            failed_reasons.append(f"{source_subjects[0]}是固定课程")
             return False
         if not source_subjects[0].continuous and not target_subjects[0].continuous:
-            if (len(target_subjects)==1 and check(clas,curr_time,target_subjects[0]) or
-                len(target_subjects)==2 and check(clas,curr_time,target_subjects[0]) and check(clas,curr_time,target_subjects[1])) and\
-                    (len(source_subjects)==1 and check(clas,target_time,source_subjects[0]) or
-                     len(source_subjects)==2 and check(clas,target_time,source_subjects[0]) and check(clas,target_time,source_subjects[1])):
-                return True
+            check1=check2=False
+            if len(target_subjects)==1 and check(clas,curr_time,target_subjects[0],failed_reasons,conflict_lessons):
+                check1=True
+            if len(target_subjects)==2:
+                check1=check(clas,curr_time.sin_week,target_subjects[0],failed_reasons,conflict_lessons)
+                check2=check(clas,curr_time.dou_week,target_subjects[1],failed_reasons,conflict_lessons)
+                check1=check1 and check2
+            if len(source_subjects)==1 and check(clas,target_time,source_subjects[0],failed_reasons,conflict_lessons):
+                check2=True
+            if len(source_subjects)==2:
+                check2=check(clas,target_time.sin_week,source_subjects[0],failed_reasons,conflict_lessons)
+                check3=check(clas,target_time.dou_week,source_subjects[1],failed_reasons,conflict_lessons)
+                check2=check2 and check3
+            return check1 and check2
         return False
 
     def show_check_result(self,source_subjects:list[Subject],source_time:Time|None,exchange:bool=True):
@@ -454,51 +536,59 @@ class Generate(QFrame):
                 target_subjects=clas.get_lessons(target_time)
                 # 判断能否放置
                 can_place=False
-                if source_subjects[0].continuous or (source_time,source_subjects[0]) in set_lessons:
+                failed_reasons=[]
+                conflict_lessons=[]
+                if source_subjects[0].continuous:
                     pass
                 elif exchange and source_time:
                     # 交换模式：目标不能是自身，且要通过 check_exchange
                     if not (i==source_time.lesson-1 and j==source_time.day-1):
-                        if target_subjects and self.check_exchange(clas,source_time,target_time,source_subjects,target_subjects):
+                        if target_subjects and self.check_exchange(clas,source_time,target_time,source_subjects,target_subjects,failed_reasons,conflict_lessons):
                             can_place=True
                         # 目标是空位：直接检查能否放置
                         elif not target_subjects:
                             if len(source_subjects)==1:
-                                can_place=check(clas,target_time,source_subjects[0])
+                                can_place=check(clas,target_time,source_subjects[0],failed_reasons,conflict_lessons)
                             elif len(source_subjects)==2:
-                                can_place=check(clas,target_time.sin_week,source_subjects[0]) and check(clas,target_time.dou_week,source_subjects[1])
+                                can_place=check(clas,target_time.sin_week,source_subjects[0],failed_reasons,conflict_lessons) and check(clas,target_time.dou_week,source_subjects[1],failed_reasons,conflict_lessons)
                 else:
                     # 添加模式（从暂存区拖来）
                     if target_subjects:
                         if len(target_subjects)==1 and target_subjects[0] in half_subjects and source_subjects[0] in half_subjects:
-                            can_place=check(clas,target_time.dou_week,source_subjects[0])
+                            can_place=check(clas,target_time.dou_week,source_subjects[0],failed_reasons,conflict_lessons)
                         else:
                             # 有课程：检查能否放下（先假设把原来的移到暂存区不检查，只检查新课程能否放这里）
-                            can_place=check(clas,target_time,source_subjects[0])
+                            can_place=check(clas,target_time,source_subjects[0],failed_reasons,conflict_lessons)
                     else:
                         # 空位：直接检查能否放置
                         if source_subjects[0] in half_subjects:
-                            can_place=check(clas,target_time.sin_week,source_subjects[0])
+                            can_place=check(clas,target_time.sin_week,source_subjects[0],failed_reasons,conflict_lessons)
                         else:
-                            can_place=check(clas,target_time,source_subjects[0])
+                            can_place=check(clas,target_time,source_subjects[0],failed_reasons,conflict_lessons)
                 self.check_result[target_time]=can_place
+                self.failed_reasons[target_time]=failed_reasons
+                self.conflict_lessons[target_time]=conflict_lessons
                 # 获取或创建 item，然后设置背景色
                 item=self.timetable_preview.item(i,j)
                 if not item:
                     item=QTableWidgetItem("")
                     item.setTextAlignment(Qt.AlignCenter)
                     self.timetable_preview.setItem(i,j,item)
-                if can_place:
+                if target_subjects==source_subjects:
+                    item.setBackground(colors["same"])
+                    item.setToolTip("相同学科")
+                elif can_place:
                     item.setBackground(colors["yes"])
-                    item.setToolTip("可以拖拽放置")
+                    item.setToolTip("可以拖拽交换")
                 else:
                     item.setBackground(colors["no"])
-                    item.setToolTip("不可放置")
+                    item.setToolTip("不可交换，原因：\n"+"\n".join(failed_reasons))
         if exchange and source_time:
             source_item=self.timetable_preview.item(source_time.lesson-1,source_time.day-1)
             if source_item:
                 source_item.setBackground(colors["curr"])
                 source_item.setToolTip("当前选中（再次点击可取消）")
+        self.timetable_legend.show()
 
     def on_drag_move(self,curr_item:QTableWidgetItem):
         if not curr_item:
@@ -553,20 +643,14 @@ class Generate(QFrame):
     def on_timetable_preview_clicked(self):
         if self.preview_mode:
             return
-        cur_item=self.timetable_preview.currentItem()
-        if not cur_item:
+        curr_item=self.timetable_preview.currentItem()
+        if not curr_item:
             return
-        if cur_item.background()==QColor(255,255,200):
-            for j in range(self.timetable_preview.columnCount()):
-                for i in range(self.timetable_preview.rowCount()):
-                    item=self.timetable_preview.item(i,j)
-                    if not item:
-                        continue
-                    item.setBackground(QtGui.QBrush(Qt.NoBrush))
-                    item.setToolTip("")
+        if curr_item.background()==colors["curr"]:
+            self.clear_timetable_highlight()
             self.teacher_timetable_pane.hide()
             return
-        curr_time=Time(cur_item.column()+1,cur_item.row()+1)
+        curr_time=Time(curr_item.column()+1,curr_item.row()+1)
         self.show_lesson_details(self.preview_object.get_lessons(curr_time),curr_time)
 
     def on_storage_dropped(self):
@@ -613,6 +697,7 @@ class Generate(QFrame):
                         item.setBackground(QtGui.QBrush(Qt.NoBrush))
                         item.setToolTip("")
             self._active_stored_subject=None
+            self.timetable_legend.hide()
         except Exception as error:
             logging.debug(f"清除课表高亮出错：{error}")
 
@@ -628,15 +713,18 @@ class Generate(QFrame):
             clas=self.preview_object
             target_time=Time(col+1,row+1)
             source_subject=dragged_card.subject
-            logging.info(f"将暂存课程拖入课表位置：第{target_time.day}天第{target_time.lesson}节")
+            logging.info(f"将暂存课程拖入课表位置：{target_time}")
             
             # 先检查新课程能否放入（不管目标位置是否已有课程）
+            force=False
             if not self.check_result[target_time]:
-                logging.debug(f"暂存课程不能放入目标位置")
-                return
+                if not self.ask_force(target_time):
+                    return
+                else:
+                    force=True
             # 目标位置已有课程：先把原课程移入暂存区
             target_subjects=clas.get_lessons(target_time)
-            if len(target_subjects)==1 and target_subjects[0] in half_subjects and check(clas,target_time.dou_week,source_subject):
+            if len(target_subjects)==1 and target_subjects[0] in half_subjects and not force and check(clas,target_time.dou_week,source_subject):
                 clas.add_lesson(target_time.dou_week,source_subject.to_normal_lesson())
             elif not target_subjects and source_subject in half_subjects:
                 clas.add_lesson(target_time.sin_week,source_subject.to_normal_lesson())
@@ -669,7 +757,7 @@ class Generate(QFrame):
             clas=self.preview_object
             target_time=Time(col+1,row+1)
             source_time=Time(source_item.column()+1,source_item.row()+1)
-            logging.info(f"移动课程：从第{source_time.day}天第{source_time.lesson}节 到 第{target_time.day}天第{target_time.lesson}节")
+            logging.info(f"移动课程：{source_time} 到 {target_time}")
             
             # 目标位置已有课程：不应走此分支（已有课程走 exchange_lesson）
             if clas.get_lessons(target_time):
@@ -723,10 +811,12 @@ class Generate(QFrame):
             target_time=Time(target_item.column()+1,target_item.row()+1)
             target_subjects=clas.get_lessons(target_time)
             
-            logging.info(f"交换课程：第{curr_time.day}天第{curr_time.lesson}节 与 第{target_time.day}天第{target_time.lesson}节")
+            logging.info(f"交换课程：{curr_time} 与 {target_time}")
             
             if not self.check_result[target_time]:
-                return
+                if curr_subjects==target_subjects or not self.ask_force(target_time):
+                    return
+
             if len(curr_subjects)==1 and curr_subjects[0] in half_subjects and len(target_subjects)==1 and target_subjects[0] in half_subjects:
                 clas.remove_lesson(curr_time.sin_week)
                 clas.add_lesson(target_time.dou_week,curr_subjects[0])
@@ -747,6 +837,7 @@ class Generate(QFrame):
                     clas.add_lesson(curr_time.sin_week,target_subjects[0])
                     clas.add_lesson(curr_time.dou_week,target_subjects[1])
             self.show_timetable(False)
+            self.refresh_object_tree()
             self.timetable_preview.setCurrentCell(target_time.lesson-1,target_time.day-1)
             self.show_lesson_details(curr_subjects,target_time)
             self.set_timetables_size()
@@ -771,6 +862,7 @@ class Generate(QFrame):
                 display_df_in_table(self.timetable_preview,class_total_dataframe())
                 self.store_lesson_subheader.hide()
                 self.lesson_storage_pane.hide()
+                self.timetable_legend.hide()
                 if set_size:
                     self.set_timetables_size()
             elif object_item.text(0)=="教师总表":
@@ -780,6 +872,7 @@ class Generate(QFrame):
                 display_df_in_table(self.timetable_preview,teacher_total_dataframe())
                 self.store_lesson_subheader.hide()
                 self.lesson_storage_pane.hide()
+                self.timetable_legend.hide()
                 if set_size:
                     self.set_timetables_size()
             elif object_item.parent() is not None and object_item.parent().text(0) =="教师课表":
@@ -790,6 +883,7 @@ class Generate(QFrame):
                 self.preview_object=lesson_info.teachers[object_item.text(0)]
                 self.timetable_subheader.setText(f"{self.preview_object.name}老师 课程表")
                 display_df_in_table(self.timetable_preview,self.preview_object.timetable_dataframe)
+                self.timetable_legend.hide()
                 if set_size:
                     self.set_timetables_size()
             elif object_item.parent().parent() is not None and object_item.parent().parent().data(0,Qt.UserRole) =="班级课表":
@@ -804,7 +898,6 @@ class Generate(QFrame):
             else:
                 raise ValueError("未知的课程表类型")
         except:
-            self.preview_splitter.hide()
             return
 
     def on_progress_update(self,progress:tuple[Class,Time]):
@@ -822,7 +915,7 @@ class Generate(QFrame):
         logging.info("导出按钮被点击")
         if self.total_left_subjects:
             logging.warning(f"暂存区还有{self.total_left_subjects}门课程")
-            dialog=MessageBox("确认导出课程表吗？",f"班级课表中还有{self.total_left_subjects}门课程位于暂存区中，是否确认导出？",self.parent().parent().parent())
+            dialog=MessageBox("确认导出课程表吗？",f"班级课表中还有{self.total_left_subjects}门课程位于暂存区中，是否确认导出？",self)
             if not dialog.exec():
                 logging.info("用户取消导出（暂存区有课程）")
                 return
@@ -860,7 +953,7 @@ class Generate(QFrame):
         try:
             logging.info("保存课程表方案")
             plan_time=time.strftime("%Y-%m-%d %H:%M:%S",time.localtime())
-            save_plan_msg=SaveTimetablePlan(plan_time,self.parent().parent().parent())
+            save_plan_msg=SaveTimetablePlan(plan_time,self)
             if not save_plan_msg.exec():
                 logging.info("用户取消保存")
                 return
@@ -897,12 +990,12 @@ class Generate(QFrame):
     def load_plan(self):
         try:
             logging.info("加载课程表方案")
-            load_plan_msg=LoadTimetablePlan(self.parent().parent().parent())
+            load_plan_msg=LoadTimetablePlan(self)
             if not load_plan_msg.exec():
                 logging.info("用户取消加载")
                 return
             if not lesson_info.saved:
-                msgbox=MessageBox("确定加载课程表方案？","加载方案会使当前的所有修改丢失，建议先保存当前课程表方案，是否继续加载方案？",self.parent().parent().parent())
+                msgbox=MessageBox("确定加载课程表方案？","加载方案会使当前的所有修改丢失，建议先保存当前课程表方案，是否继续加载方案？",self)
                 if not msgbox.exec():
                     return
             plan_name=load_plan_msg.plan_list.selectedItems()[0].text().split("\n")[0]
@@ -953,7 +1046,7 @@ class Generate(QFrame):
     def del_plan(self):
         try:
             logging.info("删除课程表方案")
-            del_plan_msg=DelTimetablePlan(self.parent().parent().parent())
+            del_plan_msg=DelTimetablePlan(self)
             if not del_plan_msg.exec():
                 logging.info("用户取消删除")
                 return
@@ -971,3 +1064,14 @@ class Generate(QFrame):
             e=traceback.format_exc()
             logging.critical(f"删除课程表方案出错：\n{e}")
             show_error(self,error)
+
+    def ask_force(self,target_time:Time)->bool:
+        logging.info("询问是否强制调课")
+        if not ForceExchangeMsgbox(self.failed_reasons[target_time],self.conflict_lessons[target_time],self).exec():
+            logging.info("用户取消强制调课")
+            return False
+        else:
+            logging.info("用户确认强制调课")
+            for lesson in self.conflict_lessons[target_time]:
+                lesson[0].remove_lesson(lesson[1])
+            return True

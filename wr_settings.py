@@ -1,7 +1,6 @@
 import logging,os
 import traceback
 
-from PySide6.QtCore import Qt
 from qfluentwidgets_pro import QConfig,RangeConfigItem,OptionsConfigItem,BoolValidator,ConfigItem,qconfig,RangeValidator,Toast,ToastPosition
 
 settings_file=f"{os.environ["APPDATA"]}/School-Timetable-Generator/settings.json"
@@ -42,7 +41,6 @@ def save_settings():
     try:
         # 将内存配置写入文件
         cfg.save()
-        logging.info("保存设置成功")
     except:
         e=traceback.format_exc()
         logging.error(f"保存设置时出错：\n{e}")

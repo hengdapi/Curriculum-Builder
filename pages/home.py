@@ -5,21 +5,23 @@ from PySide6.QtGui import QIcon
 
 from locals import project_url,check_update,app_version,github_url
 from style import *
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer,Qt
 from PySide6.QtWidgets import QFrame,QVBoxLayout
 
 class IssueHelp(MessageBoxBase):
     def __init__(self,parent=None):
         super().__init__(parent=parent)
-        self.title=SubtitleLabel("创建议题")
-        add_widget(self.title,self.viewLayout)
-        self.image=ImageLabel("images/issue_help.png")
-        self.image.setFixedSize(700,230)
-        add_widget(self.image,self.viewLayout)
+        self.title=subheader("创建议题",self,self.viewLayout)
+        self.image_view=FlipView()
+        self.image_view.addImages(["images/issue_help.png","images/issue_help2.png","images/issue_help3.png"])
+        self.image_view.setFixedSize(820,300)
+        self.image_view.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        add_widget(self.image_view,self.viewLayout,0)
         self.content_label=write("如果您不熟悉issue，请您详细阅读以上图片，了解如何创建议题。",self,self.viewLayout)
         self.content_label.setWordWrap(True)
-        add_widget(self.content_label,self.viewLayout)
+        add_widget(self.content_label,self.viewLayout,0)
         self.yesButton.setText("打开议题页面")
+        self.yesButton.setIcon(FluentIcon.LINK)
         self.cancelButton.setText("关闭")
 
     def validate(self) -> bool:
@@ -81,7 +83,7 @@ class Home(QFrame):
         QTimer.singleShot(500, lambda: check_update(self))
 
     def on_send_issue(self):
-        help_messagebox=IssueHelp(self.parent().parent().parent())
+        help_messagebox=IssueHelp(self)
         help_messagebox.exec()
 
     def copy_log(self):
