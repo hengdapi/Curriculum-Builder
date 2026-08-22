@@ -24,7 +24,6 @@ https://github.com/user-attachments/assets/54e25ec6-498b-427b-86a1-bcbc8a48aced
 - 功能人性化，如减少教师连堂、平均分配课程等
 
 ## 支持的功能
-![](docs/主页.png)
 ### 设置选项
 ![settings.png](docs/设置-长截图.png)
 - 导出、导入设置

@@ -51,6 +51,7 @@ class Window(MSFluentWindow):
         if cfg.window_maximized.value:
             self.showMaximized()
             logging.debug("恢复窗口最大化状态")
+
         self.home=home.Home()
         self.settings=settings.Settings()
         self.generate=generate.Generate()
@@ -79,7 +80,11 @@ class Window(MSFluentWindow):
             if not lesson_info.saved:
                 reply=QtWidgets.QMessageBox.question(self,"方案未保存","您当前的方案未保存，是否前往保存？\n若不保存，即使您已经导出了Excel版课程表，也无法再恢复当前方案了",QtWidgets.QMessageBox.Yes|QtWidgets.QMessageBox.No|QtWidgets.QMessageBox.Cancel)
                 if reply==QtWidgets.QMessageBox.Yes:
+                    self.switchTo(self.generate)
                     self.generate.save_plan()
+                    if not lesson_info.saved:
+                        e.ignore()
+                        return
                 elif reply==QtWidgets.QMessageBox.Cancel:
                     e.ignore()
                     return
@@ -101,8 +106,6 @@ class Window(MSFluentWindow):
 
 
 if __name__ == '__main__':
-    logging.info("\n\n" + "="*60)
-    logging.info(f"程序开始启动，当前时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
     try:
         import platform
         logging.info(f"操作系统名称：{platform.system()} {platform.release()}")

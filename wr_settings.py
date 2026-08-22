@@ -7,6 +7,7 @@ settings_file=f"{os.environ["APPDATA"]}/School-Timetable-Generator/settings.json
 class Settings(QConfig):
     morning_class_num=RangeConfigItem("table_style","morning_class_num",4,RangeValidator(1,10),restart=True)
     afternoon_class_num=RangeConfigItem("table_style","afternoon_class_num",2,RangeValidator(1,10),restart=True)
+    day_class_num:int=morning_class_num.value+afternoon_class_num.value
     show_teachers=OptionsConfigItem("table_style","show_teachers",True,BoolValidator(),restart=True)
     text_font=ConfigItem("table_style","text_font","宋体",restart=True)
     text_size=ConfigItem("table_style","text_size",9,restart=True)

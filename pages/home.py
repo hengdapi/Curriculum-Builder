@@ -66,10 +66,10 @@ class Home(QFrame):
 
         self.feedback_layout=QHBoxLayout(self)
         layout.addLayout(self.feedback_layout)
-        self.save_log=button("复制日志内容",self,self.feedback_layout,10)
-        self.save_log.setIcon(FluentIcon.COPY)
-        self.save_log.setFixedSize(170, 40)
-        self.save_log.clicked.connect(self.copy_log)
+        self.copy_log_button=button("复制日志内容",self,self.feedback_layout,10)
+        self.copy_log_button.setIcon(FluentIcon.COPY)
+        self.copy_log_button.setFixedSize(170,40)
+        self.copy_log_button.clicked.connect(self.copy_log)
 
         self.send_issue=button("创建议题",self,self.feedback_layout,10)
         self.send_issue.setIcon(FluentIcon.FEEDBACK)

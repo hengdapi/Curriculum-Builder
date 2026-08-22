@@ -28,6 +28,8 @@ file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(logging.Formatter("[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s"))
 logging.getLogger().addHandler(file_handler)
 
+logging.info("\n\n"+"="*60)
+logging.info(f"程序开始启动")
 appdata=os.path.join(os.environ["APPDATA"],"School-Timetable-Generator")
 project_url="https://gitcode.com/2603_96523924/School-Timetable-Generator"
 github_url="https://github.com/hengdapi/School-Timetable-Generator"
@@ -219,7 +221,7 @@ def teacher_total_dataframe()->pd.DataFrame:
             for time,lesson in lessons.items():
                 data[teacher.name][day+time]=lesson
     dataframe=pd.DataFrame(data).transpose()
-    dataframe=dataframe[[str(Time(day,lesson)) for day in range(1,6) for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)]]
+    dataframe=dataframe[[str(Time(day,lesson)) for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)]]
     return dataframe
 
 class Time:
@@ -277,7 +279,7 @@ class Time:
     @property
     def next(self):
         next_time=self.all_week
-        if self.lesson==cfg.morning_class_num.value+cfg.afternoon_class_num.value:
+        if self.lesson==cfg.day_class_num:
             if self.day==5:
                 next_time.day=next_time.lesson=1
             else:
@@ -293,10 +295,10 @@ class Time:
         if self.lesson==1:
             if self.day==1:
                 prev_time.day=5
-                prev_time.lesson=cfg.morning_class_num.value+cfg.afternoon_class_num.value
+                prev_time.lesson=cfg.day_class_num
             else:
                 prev_time.day-=1
-                prev_time.lesson=cfg.morning_class_num.value+cfg.afternoon_class_num.value
+                prev_time.lesson=cfg.day_class_num
         else:
             prev_time.lesson-=1
         return prev_time
@@ -332,14 +334,7 @@ class Teacher:
         self.timetable[time]=(clas,subject)
 
     def get_lesson(self,time:Time):
-        if time.all_week in self.timetable:
-            return self.timetable[time.all_week]
-        elif time.dou_week in self.timetable:
-            return self.timetable[time.dou_week]
-        elif time.sin_week in self.timetable:
-            return self.timetable[time.sin_week]
-        else:
-            return None
+        return self.timetable.get(time)
 
     def is_busy(self,time:Time):
         """
@@ -383,8 +378,8 @@ class Subject:
         self.name = name
         self.continuous=False
         self.continue_times:dict[Class,int]={}
-        self.time_list:dict[Time,int]={Time(day,lesson):0 for day in range(1,6) for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)}
-        self.timetable:dict[Time,list[Class]]={Time(day,lesson):[] for day in range(1,6) for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)}
+        self.time_list:dict[Time,int]={Time(day,lesson):0 for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)}
+        self.timetable:dict[Time,list[Class]]={Time(day,lesson):[] for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)}
 
     def __str__(self):
         if self.continuous:
@@ -430,7 +425,7 @@ class Class:
         """
         self.name=name
         self.teachers=teachers
-        self.timetable:dict[Time,list[Subject]]={Time(day,lesson):[] for day in range(1,6) for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)}
+        self.timetable:dict[Time,list[Subject]]={Time(day,lesson):[] for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)}
         self.left_subjects:list[Subject]=[]
 
     def __str__(self):
@@ -444,6 +439,11 @@ class Class:
         for time,subjects in self.timetable.items():
             timetable[str(time)]=[subject.name for subject in subjects]
         return timetable
+
+    def reset(self):
+        for day in range(1,6):
+            for lesson in range(1,cfg.day_class_num+1):
+                self.remove_lesson(Time(day,lesson))
 
     def get_teacher(self,subject:Subject):
         return self.teachers[subject.name]
@@ -624,7 +624,7 @@ class LessonInfo:
         for subject in self.subjects.values():
             subject.continue_times={clas:0 for clas in self.class_lst}
 
-        sys.setrecursionlimit(max(len(self.classes)*5*(cfg.morning_class_num.value+cfg.afternoon_class_num.value)*2,1000))
+        sys.setrecursionlimit(max(len(self.classes)*5*cfg.day_class_num*2,1000))
         logging.debug("课程信息解析完成")
 lesson_info=LessonInfo()
 

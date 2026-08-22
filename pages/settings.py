@@ -22,7 +22,7 @@ class RuleMessageBox(MessageBoxBase):
             self.yesButton.setText("添加规则")
             subheader("添加规则",self,self.viewLayout)
         self.cancelButton.setText("取消")
-        self.times=[day+lesson2str(lesson) for day in days[1:] for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1)]
+        self.times=[day+lesson2str(lesson) for day in days[1:] for lesson in range(1,cfg.day_class_num+1)]
         self.string_elements={}
         self.string_layouts=[]
 
@@ -192,8 +192,8 @@ class Settings(QFrame):
     def on_class_num_changed(self,time=None):
         if time:
             logging.info(f"修改{"上午" if time=="morning" else "下午"}课程数量")
-        if cfg.morning_class_num.value+cfg.afternoon_class_num.value>len(cfg.lessons_time.value):
-            for lesson in range(len(cfg.lessons_time.value)+1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1):
+        if cfg.day_class_num>len(cfg.lessons_time.value):
+            for lesson in range(len(cfg.lessons_time.value)+1,cfg.day_class_num+1):
                 cfg.lessons_time.value[str(lesson)]=[[0,0],[0,0]]
         save_settings()
         self.show_lesson_time_group()
@@ -362,7 +362,7 @@ class Settings(QFrame):
         self.lesson_length_group.deleteLater()
         status=self.lesson_length_group.isExpand
         self.lesson_length_group=ExpandGroupSettingCard(FluentIcon.STOP_WATCH,"课程起止时间","显示在对应课时下方")
-        for lesson in range(1,cfg.morning_class_num.value+cfg.afternoon_class_num.value+1):
+        for lesson in range(1,cfg.day_class_num+1):
             curr_time=Time(1,lesson)
             lesson_length_card=SettingCard("",curr_time.to_str(False,True))
             start_time=TimePicker()

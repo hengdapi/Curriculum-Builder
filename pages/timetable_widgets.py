@@ -6,16 +6,14 @@
 - DraggableLessonCard    暂存区的可拖拽卡片（支持点击/拖拽激活课表高亮）
 """
 
-from PySide6.QtCore import Signal, QMimeData, QPoint
+from PySide6.QtCore import QMimeData,QPoint
 from PySide6.QtGui import (
     QDropEvent,QDragMoveEvent,QDragEnterEvent,QPixmap,QPainter,QBrush,
-    QColor,QDrag,QFont
+    QDrag
 )
-from PySide6.QtWidgets import QFrame,QVBoxLayout,QWidget,QHBoxLayout
-from qfluentwidgets_pro import InfoBadge
+from qfluentwidgets_pro.components.date_time.picker_base import SeparatorWidget
 from locals import *
-from style import CardWidget, BodyLabel, TableWidget
-from PySide6.QtWidgets import QTableWidgetItem, QAbstractItemView
+from style import *
 
 
 # =====================================================================
@@ -61,7 +59,54 @@ class TimeTableWidget(TableWidget):
     def startDrag(self, supportedActions):
         self._dragged_item = self.currentItem()
         TimeTableWidget._drag_source_item = self.currentItem()
-        super().startDrag(supportedActions)
+
+        # 普通文本单元格：交给默认逻辑（默认会按 item 文本渲染预览图）
+        row, col = self.currentRow(), self.currentColumn()
+        if row < 0 or col < 0 or self.cellWidget(row, col) is None:
+            super().startDrag(supportedActions)
+            return
+
+        # 使用 setCellWidget 的单元格：QTableWidget 默认不把 cell widget
+        # 画进拖拽预览图（它只画 item 的文本/图标），这里手动渲染控件作为预览图
+        indexes = self.selectedIndexes()
+        if not indexes:
+            return
+        mime_data = self.model().mimeData(indexes)
+
+        drag = QDrag(self)
+        drag.setMimeData(mime_data)
+
+        widget = self.cellWidget(row, col)
+        pixmap = self._render_cell_pixmap(widget)
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(QPoint(widget.width() // 2, widget.height() // 2))
+
+        drag.exec(supportedActions)
+
+    @staticmethod
+    def _render_cell_pixmap(widget: QWidget) -> QPixmap:
+        """把 cell widget 渲染成高 DPI 的拖拽预览图"""
+        dpr = widget.devicePixelRatioF() if hasattr(widget, "devicePixelRatioF") else 1.0
+        if dpr < 1.0:
+            dpr = 1.0
+        logical_w = widget.width()
+        logical_h = widget.height()
+
+        pixmap = QPixmap(int(logical_w * dpr), int(logical_h * dpr))
+        pixmap.setDevicePixelRatio(dpr)
+        pixmap.fill(Qt.transparent)
+
+        # 白色圆角卡片背景（与暂存区卡片视觉一致）
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(255, 255, 255, 255)))
+        painter.drawRoundedRect(0, 0, logical_w, logical_h, 8, 8)
+        painter.end()
+
+        # 把控件（含子控件、badge、分隔线）整体渲染进预览图
+        widget.render(pixmap)
+        return pixmap
 
     def get_dragged_item(self):
         return self._dragged_item
@@ -108,7 +153,7 @@ class TimeTableWidget(TableWidget):
         if row < 0 or col < 0:
             return
         event.accept()
-        if self.item(row, col) is not None and self.item(row, col).text():
+        if self.item(row, col) is not None and self.item(row, col).data(Qt.UserRole):
             # 拖到有内容的格子
             self.dropdown.emit(self.item(row, col))
         else:
@@ -164,10 +209,11 @@ class DraggableLessonCard(CardWidget):
 
     card_activated = Signal(Subject)
 
-    def __init__(self, subject: Subject, teacher: Teacher, parent=None):
+    def __init__(self, subject: Subject, teacher: Teacher, remain_num: int = 1, parent=None):
         super().__init__(parent=parent)
         self.subject = subject
         self.teacher = teacher
+        self.remain_num = remain_num
         self._drag_start_pos = None
 
         layout = QVBoxLayout(self)
@@ -177,6 +223,29 @@ class DraggableLessonCard(CardWidget):
         label.setAlignment(Qt.AlignCenter)
         layout.addWidget(label)
         self.setCursor(Qt.PointingHandCursor)
+
+        # 卡片右上角用 badge 标注剩余数量
+        # 不使用 InfoBadgeManager：它按 target 父容器坐标系计算位置，
+        # 而本场景 parent==target，会导致坐标偏移 & badge 被父容器裁掉。
+        # 改为直接把 badge 放在卡片内部，右上角内侧。
+        self.badge = InfoBadge.attension(remain_num, self)
+        self.badge.adjustSize()
+        self._update_badge_pos()
+        if remain_num==1:
+            self.badge.hide()
+
+    def _update_badge_pos(self):
+        """把 badge 放到卡片右上角内侧，避免溢出被截断"""
+        margin = 4
+        self.badge.move(
+            self.width() - self.badge.width() - margin,
+            margin,
+        )
+        self.badge.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_badge_pos()
 
     # ---------------------------------------------------------------
     # 鼠标事件：区分"点击"和"拖拽"
@@ -271,17 +340,71 @@ class DraggableLessonCard(CardWidget):
         painter.end()
         return pixmap
 
-def widget_with_badge(text:str,number:int,font:QFont|None=None)->QWidget:
+def widget_with_badge(label_text:str,badge_text,font:QFont,badge_font:QFont|None=None,badge_type=InfoBadge.error,badge_pos:str="right")->QWidget:
     item_widget=QWidget()
     item_layout=QHBoxLayout(item_widget)
     item_layout.setContentsMargins(0,0,0,0)
+    if badge_font is None:
+        badge_font=font
+    if badge_text and badge_pos=="left":
+        badge=badge_type(badge_text)
+        badge.setFont(badge_font)
+        item_layout.addWidget(badge)
     name_label=BodyLabel()
-    if font:
-        name_label.setFont(font)
-    name_label.setText(text)
+    name_label.setFont(font)
+    name_label.setText(label_text)
+    name_label.setWordWrap(True)
+    name_label.setAlignment(Qt.AlignCenter)
     item_layout.addWidget(name_label)
-    if number:
-        badge=InfoBadge.error(number)
+    if badge_text and badge_pos=="right":
+        badge=badge_type(badge_text)
+        badge.setFont(badge_font)
         item_layout.addWidget(badge)
     item_layout.addStretch(1)
     return item_widget
+
+def sindou_widget(sin_text:str,dou_text:str,font:QFont,show_separator=True)->QWidget:
+    lesson_widget=QWidget()
+    split_layout=QVBoxLayout(lesson_widget)
+    split_layout.setContentsMargins(0,0,0,0)
+    font.setPointSize(font.pointSize()-2)
+    if sin_text:
+        single_widget=widget_with_badge(sin_text,"单",font,font,InfoBadge.attension,"left")
+        single_layout=QHBoxLayout()
+        single_layout.setContentsMargins(0,0,0,0)
+        single_layout.addStretch(1)
+        add_widget(single_widget,single_layout,0)
+        single_layout.addStretch(1)
+        split_layout.addLayout(single_layout)
+    if show_separator and sin_text and dou_text:
+        add_widget(SeparatorWidget(Qt.Horizontal),split_layout,0)
+    if dou_text:
+        double_widget=widget_with_badge(dou_text,"双",font,font,InfoBadge.warning,"left")
+        double_layout=QHBoxLayout()
+        double_layout.setContentsMargins(0,0,0,0)
+        double_layout.addStretch(1)
+        add_widget(double_widget,double_layout,0)
+        double_layout.addStretch(1)
+        split_layout.addLayout(double_layout)
+    return lesson_widget
+
+def display_teachers_timetable(teacher:Teacher,tablewidget:QTableWidget,show_separator=True):
+    display_df_in_table(tablewidget,teacher.timetable_dataframe)
+    for day in range(1,6):
+        for lesson in range(1,cfg.day_class_num+1):
+            curr_time=Time(day,lesson)
+            curr_item=tablewidget.item(lesson-1,day-1)
+            if not curr_item:
+                continue
+            curr_item.setData(Qt.UserRole,curr_item.text())
+            if curr_time in teacher.timetable:
+                continue
+            sin_text=dou_text=""
+            if teacher.is_busy(curr_time.sin_week):
+                sin_clas,sin_subject=teacher.get_lesson(curr_time.sin_week)
+                sin_text=f"{sin_clas}\n{sin_subject}"
+            if teacher.is_busy(curr_time.dou_week):
+                dou_clas,dou_subject=teacher.get_lesson(curr_time.dou_week)
+                dou_text=f"{dou_clas}\n{dou_subject}"
+            tablewidget.setCellWidget(lesson-1,day-1,sindou_widget(sin_text,dou_text,tablewidget.font(),show_separator))
+            curr_item.setText("")

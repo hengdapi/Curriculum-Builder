@@ -356,28 +356,29 @@ class SaveThread(QThread):
     success=Signal()
     error=Signal(str)
 
-    def __init__(self,filename: str,ext: str,parent=None):
+    def __init__(self,filename: str,ext: str,file,parent=None):
         super().__init__(parent)
         self.filename=filename
         self.ext=ext
+        self.file=file
         logging.debug(f"创建SaveThread实例")
 
     def run(self):
         try:
-            logging.info(f"开始导出课程表")
+            logging.info("开始导出课程表")
             start_time = time.time()
-            
-            logging.debug("导出各班课表（年级）")
-            save_grades_timetable(self.filename,self.ext)
-            
-            logging.debug("导出班级总表（横）")
-            save_total_grades_timetable(self.filename,self.ext)
-            
-            logging.debug("导出教师课表（年级）")
-            save_teachers_timetable(self.filename,self.ext)
-            
-            logging.debug("导出教师总表（横）")
-            save_total_teachers_timetable(self.filename,self.ext)
+            if self.file=="all" or self.file=="classes":
+                logging.debug("导出各班课表（年级）")
+                save_grades_timetable(self.filename,self.ext)
+            if self.file=="all" or self.file=="total_classes":
+                logging.debug("导出班级总表（横）")
+                save_total_grades_timetable(self.filename,self.ext)
+            if self.file=="all" or self.file=="teachers":
+                logging.debug("导出教师课表（年级）")
+                save_teachers_timetable(self.filename,self.ext)
+            if self.file=="all" or self.file=="total_teachers":
+                logging.debug("导出教师总表（横）")
+                save_total_teachers_timetable(self.filename,self.ext)
             
             elapsed_time = time.time() - start_time
             logging.info(f"课程表导出完成，耗时{elapsed_time:.2f}秒")
