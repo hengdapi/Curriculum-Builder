@@ -18,7 +18,11 @@ if sys.platform == "win32":
         "--windows-icon-from-ico=logo.ico",  # 设置应用程序图标
         "--output-filename=School-Timetable-Generator.exe",  # 指定输出主程序文件名
         # ── 项目数据文件 ──
-        "--include-data-dir=images=images",
+        "--include-data-file=images/gitcode.png=images/gitcode.png",
+        "--include-data-file=images/issue_help.png=images/issue_help.png",
+        "--include-data-file=images/issue_help2.png=images/issue_help2.png",
+        "--include-data-file=images/issue_help3.png=images/issue_help3.png",
+        "--include-data-file=LICENSE=LICENSE",
         "--include-data-file=logo.ico=logo.ico",
         "--include-data-file=template.xlsx=template.xlsx",
         "--include-data-file=app_version.txt=app_version.txt",
