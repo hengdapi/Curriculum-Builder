@@ -12,7 +12,7 @@ def check(clas: Class,time: Time,subject: Subject,failed_reasons=None,conflict_l
         logging.debug(f"检查能否在 {clas} 的 {time} 安排 {subject}")
         teacher=clas.get_teacher(subject)
         if teacher.is_busy(time):
-            for conflict_time in (time.sin_week,time.dou_week,time):
+            for conflict_time in (time.sin_week,time.dou_week,time.all_week) if time.all else (time,):
                 if not teacher.get_lesson(conflict_time):
                     continue
                 conflict_class,conflict_subject=teacher.get_lesson(conflict_time)
@@ -22,8 +22,11 @@ def check(clas: Class,time: Time,subject: Subject,failed_reasons=None,conflict_l
             failed_reasons.add(f"规则冲突：{subject} 是固定课程")
         time=time.all_week
         for rule in lesson_info.rules:
+            if rule.type==Rule_type.set_time:
+                if rule.time==time and rule.subject!=subject:
+                    failed_reasons.add(f"规则冲突：{time} 必须排 {rule.subject}")
             # 不能排在指定时间
-            if rule.type==Rule_type.avoid_time:
+            elif rule.type==Rule_type.avoid_time:
                 # 支持只写节次（如"上午第4节"）
                 if rule.subject==subject and time==rule.time:
                     failed_reasons.add(f"规则冲突：{subject} 不能排在 {time} ")
@@ -34,9 +37,9 @@ def check(clas: Class,time: Time,subject: Subject,failed_reasons=None,conflict_l
             # 学科不能与另一学科同一时间
             elif rule.type==Rule_type.avoid_subject:
                 if subject==rule.subjectA and rule.subjectB.timetable.get(time):
-                    failed_reasons.add(f"规则冲突：已经在 {time} 安排了会引起冲突的 {rule.subjectB}")
+                    failed_reasons.add(f"规则冲突：已经在 {", ".join([clas.name for clas in rule.subjectB.timetable.get(time)])} 的 {time} 安排了与 {subject} 冲突的 {rule.subjectB}")
                 if subject==rule.subjectB and rule.subjectA.timetable.get(time):
-                    failed_reasons.add(f"规则冲突：已经在 {time} 安排了会引起冲突的 {rule.subjectA}")
+                    failed_reasons.add(f"规则冲突：已经在 {", ".join([clas.name for clas in rule.subjectA.timetable.get(time)])} 的 {time} 安排了与 {subject} 冲突的 {rule.subjectA}")
             # 老师不能与另一老师同一时间有课
             elif rule.type==Rule_type.avoid_teacher:
                 teacher=clas.get_teacher(subject)
@@ -53,6 +56,64 @@ def check(clas: Class,time: Time,subject: Subject,failed_reasons=None,conflict_l
         e=traceback.format_exc()
         logging.error(f"检查时出错：\n{e}")
         return False
+
+def check_exchange(clas:Class,time1:Time,time2:Time,failed_reasons:set,conflict_lessons:set)->bool:
+    subjects1=clas.get_lessons(time1)
+    subjects2=clas.get_lessons(time2)
+    if not subjects1 or not subjects2:
+        return False
+    # 两个半周课程：检查能否拼接
+    if len(subjects1)==1 and subjects1[0] in half_subjects and len(subjects2)==1 and subjects2[0] in half_subjects and check(clas,time2.dou_week,subjects1[0],failed_reasons):
+        return True
+    # 目标位置是空位：直接检查源课程能否放入
+    if not subjects2:
+        if len(subjects1)==1:
+            return check(clas,time2,subjects1[0],failed_reasons,conflict_lessons)
+        elif len(subjects1)==2:
+            check1=check(clas,time2.sin_week,subjects1[0],failed_reasons,conflict_lessons)
+            check2=check(clas,time2.dou_week,subjects1[1],failed_reasons,conflict_lessons)
+            return check1 and check2
+        return False
+    # 源位置是空位：理论上不应该发生
+    if not subjects1:
+        return False
+    if (time1,subjects1[0]) in set_lessons:
+        failed_reasons.add(f"规则冲突：{subjects1[0]} 必须排在 {time1}")
+        return False
+    if (time2,subjects2[0]) in set_lessons:
+        failed_reasons.add(f"规则冲突：{subjects2[0]} 必须排在 {time2}")
+        return False
+    clas.remove_lesson(time1)
+    clas.remove_lesson(time2)
+    if len(subjects2)==1:
+        check1=check(clas,time1,subjects2[0],failed_reasons,conflict_lessons)
+    else:
+        check1=check(clas,time1.sin_week,subjects2[0],failed_reasons,conflict_lessons)
+        check2=check(clas,time1.dou_week,subjects2[1],failed_reasons,conflict_lessons)
+        check1=check1 and check2
+    if len(subjects1)==1:
+        check2=check(clas,time2,subjects1[0],failed_reasons,conflict_lessons)
+    else:
+        check2=check(clas,time2.sin_week,subjects1[0],failed_reasons,conflict_lessons)
+        check3=check(clas,time2.dou_week,subjects1[1],failed_reasons,conflict_lessons)
+        check2=check2 and check3
+    for subject in subjects1:
+        clas.add_lesson(time1,subject)
+    for subject in subjects2:
+        clas.add_lesson(time2,subject)
+
+    clas.timetable[time1],clas.timetable[time2]=subjects2,subjects1
+    check_continue=True
+    for subject in subjects1:
+        if subject.get_continue_times(clas)<continue_num[subject]:
+            check_continue=False
+            failed_reasons.add(f"规则冲突：交换后 {subject} 只能连堂 {subject.get_continue_times(clas)} 次（规则要求连堂 {continue_num[subject]} 次） ")
+    for subject in subjects2:
+        if subject.get_continue_times(clas)<continue_num[subject]:
+            check_continue=False
+            failed_reasons.add(f"规则冲突：交换后 {subject} 只能连堂 {subject.get_continue_times(clas)} 次（规则要求连堂 {continue_num[subject]} 次） ")
+    clas.timetable[time1],clas.timetable[time2]=subjects1,subjects2
+    return check1 and check2 and check_continue
 
 class GenerateThread(QThread):
     finished_signal=Signal()  # 生成成功
@@ -171,20 +232,17 @@ class GenerateThread(QThread):
                     # 连堂
                     elif subject not in half_subjects and check(clas, curr_time, subject):
                         add_continue=False
-                        if subject in continue_num and subject.continue_times[clas]<continue_num[subject] and clas.left_subjects.count(subject)>=2 and \
-                                curr_time.lesson!=cfg.morning_class_num.value and curr_time.lesson!=cfg.day_class_num:
-                            if continue_num[subject]-subject.continue_times[clas]==clas.left_subjects.count(subject)/2:
+                        if subject.get_continue_times(clas)<continue_num[subject] and clas.left_subjects.count(subject)>=2 and \
+                                (cfg.allow_noon_continuous.value or curr_time.lesson!=cfg.morning_class_num.value) and curr_time.lesson!=cfg.day_class_num:
+                            if continue_num[subject]-subject.get_continue_times(clas)==clas.left_subjects.count(subject)/2:
                                 add_continue=True
                             else:
                                 add_continue=random.choice([True,False])
                             if add_continue and check(clas,next_time,subject):
-                                clas.add_lesson(next_time,subject.to_continuous_lesson())
+                                clas.add_lesson(next_time,subject)
                             else:
                                 continue
-                        if add_continue:
-                            clas.add_lesson(curr_time,subject.to_continuous_lesson())
-                        else:
-                            clas.add_lesson(curr_time,subject.to_normal_lesson())
+                        clas.add_lesson(curr_time,subject)
                         if not last:
                             if curr_time.day==5 and curr_time.lesson==cfg.day_class_num:
                                 self.dfs(self.class_lst[self.class_lst.index(clas)+1],Time(1,1))

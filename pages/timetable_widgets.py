@@ -207,7 +207,7 @@ class DraggableLessonCard(CardWidget):
        - 拖到暂存区内部的其他位置：由 LessonStoragePane 接收并重排卡片顺序
     """
 
-    card_activated = Signal(Subject)
+    card_activated = Signal(str,Subject)
 
     def __init__(self, subject: Subject, teacher: Teacher, remain_num: int = 1, parent=None):
         super().__init__(parent=parent)
@@ -260,7 +260,7 @@ class DraggableLessonCard(CardWidget):
         if event.button() == Qt.LeftButton and self._drag_start_pos is not None:
             current_pos = self._event_pos(event)
             if (current_pos - self._drag_start_pos).manhattanLength() < 4:
-                self.card_activated.emit(self.subject)
+                self.card_activated.emit("click",self.subject)
         super().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -271,7 +271,7 @@ class DraggableLessonCard(CardWidget):
             return
 
         # 先激活高亮
-        self.card_activated.emit(self.subject)
+        self.card_activated.emit("drag",self.subject)
 
         # 构造拖拽数据
         mime_data = QMimeData()

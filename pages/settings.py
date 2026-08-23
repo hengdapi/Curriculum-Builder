@@ -29,7 +29,7 @@ class RuleMessageBox(MessageBoxBase):
         self.rule_combo=ComboBox()
         self.rule_combo.setPlaceholderText("请选择规则类型")
         for type,name in rule_types.items():
-            self.rule_combo.addItem(name.replace("|",""),userData=[name,type])
+            self.rule_combo.addItem(name.replace("|"," "),userData=[name,type])
         add_widget(self.rule_combo,self.viewLayout,0)
         if edit:
             self.rule_combo.setCurrentText(rule_types[rule.type].replace("|",""))
@@ -674,7 +674,9 @@ class Settings(QFrame):
             self.reduce_continue_card=SwitchSettingCard(FluentIcon.STOP_WATCH,"减少教师连堂","生成时尽可能避免教师连堂上课",cfg.reduce_continue)
             add_widget(self.reduce_continue_card,self.layout,0)
             self.average_subjects_card=SwitchSettingCard(FluentIcon.SPEED_MEDIUM,"平均分配课程","生成时尽量将学科平均分配到每一天（在不违背生成规则的前提下）",cfg.average_subjects)
-            add_widget(self.average_subjects_card,self.layout)
+            add_widget(self.average_subjects_card,self.layout,0)
+            self.forbid_noon_continuous_card=SwitchSettingCard(FluentIcon.CALENDAR,"允许跨上下午连堂","允许将连堂课排在上午最后一节和下午第一节",cfg.allow_noon_continuous)
+            add_widget(self.forbid_noon_continuous_card,self.layout)
 
             add_widget(SeparatorWidget(orient=Qt.Horizontal),self.layout)
 

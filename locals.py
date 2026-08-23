@@ -31,7 +31,7 @@ logging.getLogger().addHandler(file_handler)
 logging.info("\n\n"+"="*60)
 logging.info(f"程序开始启动")
 appdata=os.path.join(os.environ["APPDATA"],"School-Timetable-Generator")
-project_url="https://gitcode.com/2603_96523924/School-Timetable-Generator"
+project_url="https://gitcode.com/hengdapi/School-Timetable-Generator"
 github_url="https://github.com/hengdapi/School-Timetable-Generator"
 
 def check_update(window,show_no_update=False):
@@ -376,14 +376,10 @@ class Subject:
         :param name: 课程名称
         """
         self.name = name
-        self.continuous=False
-        self.continue_times:dict[Class,int]={}
         self.time_list:dict[Time,int]={Time(day,lesson):0 for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)}
         self.timetable:dict[Time,list[Class]]={Time(day,lesson):[] for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)}
 
     def __str__(self):
-        if self.continuous:
-            return f"【连】{self.name}"
         return self.name
 
     def __eq__(self, other):
@@ -405,15 +401,22 @@ class Subject:
         self.time_list[time]-=1
         self.timetable[time].remove(clas)
 
-    def to_continuous_lesson(self):
-        subject2=copy.copy(self)
-        subject2.continuous=True
-        return subject2
+    def get_continue_times(self,clas:Class) -> int:
+        """
+        获取本学科在某班的连堂次数
+        """
+        times=0
+        for time,subjects in clas.timetable.items():
+            if subjects!=[self]:
+                continue
+            if time.lesson!=1 and (cfg.allow_noon_continuous.value or time.lesson!=cfg.morning_class_num.value+1):
+                if clas.get_lessons(time.prev)==[self]:
+                    times+=1
+            if (cfg.allow_noon_continuous.value or time.lesson!=cfg.morning_class_num.value) and time.lesson!=cfg.day_class_num:
+                if clas.get_lessons(time.next)==[self]:
+                    times+=1
+        return times
 
-    def to_normal_lesson(self):
-        subject2=copy.copy(self)
-        subject2.continuous=False
-        return subject2
 
 class Class:
     def __init__(self,name,teachers:dict[str,Teacher]):
@@ -464,10 +467,6 @@ class Class:
             self.timetable[time].append(subject)
         else:
             self.timetable[time]=[subject]
-        if subject.continuous:
-            if self not in lesson_info.subjects[subject.name].continue_times:
-                lesson_info.subjects[subject.name].continue_times[self]=0
-            lesson_info.subjects[subject.name].continue_times[self]+=0.5
         subject.add_lesson(self,time)
         self.left_subjects.remove(subject)
 
@@ -490,13 +489,36 @@ class Class:
             self.get_teacher(subject).remove_lesson(time)
             time=time.all_week
             self.timetable[time].remove(subject)
-            if subject.continuous:
-                lesson_info.subjects[subject.name].continue_times[self]-=0.5
             subject.remove_lesson(self,time)
             self.left_subjects.append(subject)
 
     def get_lessons(self,time:Time)->list[Subject]|None:
         return copy.copy(self.timetable.get(time.all_week))
+
+    def exchange_lessons(self,time1:Time,time2:Time):
+        subjects1=self.get_lessons(time1)
+        subjects2=self.get_lessons(time2)
+        if not subjects1 or not subjects2:
+            return
+        if len(subjects1)==1 and subjects1[0] in half_subjects and len(subjects2)==1 and subjects2[0] in half_subjects:
+            self.remove_lesson(time1.sin_week)
+            self.add_lesson(time2.dou_week,subjects1[0])
+        else:
+            # 先从两个位置移除
+            self.remove_lesson(time1)
+            self.remove_lesson(time2)
+            # 把源课程放入目标位置
+            if len(subjects1)==1:
+                self.add_lesson(time2,subjects1[0])
+            else:
+                self.add_lesson(time2.sin_week,subjects1[0])
+                self.add_lesson(time2.dou_week,subjects1[1])
+            # 把目标课程放入源位置（真正的交换）
+            if len(subjects2)==1:
+                self.add_lesson(time1,subjects2[0])
+            else:
+                self.add_lesson(time1.sin_week,subjects2[0])
+                self.add_lesson(time1.dou_week,subjects2[1])
 
     @property
     def timetable_dataframe(self)->pd.DataFrame:
@@ -532,9 +554,9 @@ class Rule_type:
     half_num="half_num"
 
 rule_types={
-    "set_time": "{subject}|学科必须排在|{time}",
-    "avoid_time": "{subject}|学科不能排在|{time}",
-    "priority_time": "{subject}|学科优先排在|{time}",
+    "set_time": "{time}|必须排|{subject}|学科",
+    "avoid_time": "{time}|不能排|{subject}|学科",
+    "priority_time": "{time}|优先排|{subject}|学科",
     "set_num": "{subject}|学科同一时间最多排|{number}|节课",
     "avoid_subject": "{subjectA}|学科与|{subjectB}|学科不能排在同一时间",
     "avoid_teacher": "{teacherA}|老师与|{teacherB}|老师不能在同一时间有课",
@@ -630,7 +652,7 @@ lesson_info=LessonInfo()
 
 priority_subjects:dict[Time,list[Subject]]={}
 half_subjects:set[Subject]=set()
-continue_num:dict[Subject,int]={}
+continue_num:dict[Subject,int]={subject:0 for subject in lesson_info.subjects.values()}
 set_lessons:list[tuple[Time,Subject]]=[]
 
 for rule in cfg.rules.value:
