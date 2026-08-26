@@ -10,7 +10,7 @@ from save_core import SaveThread
 # 读取配置文件
 cfg=load_settings()
 colors={"Light":{"yes":QColor(150,255,150),"no":QColor(255,150,150),"curr":QColor(255,255,200),"same":QColor(170,170,255)},
-        "Dark":{"yes":QColor(100,200,100),"no":QColor(200,100,100),"curr":QColor(170,170,100),"same":QColor(170,170,255)}}[darkdetect.theme()]
+        "Dark":{"yes":QColor(100,200,100),"no":QColor(200,100,100),"curr":QColor(170,170,100),"same":QColor(170,170,255)}}[darkdetect.theme() if darkdetect.theme() else "Light"]
 
 class ColorSwatch(QWidget):
     """抗锯齿圆角色块（解决 QSS 圆角在高分屏上的锯齿问题）"""
@@ -35,8 +35,8 @@ def make_legend(parent=None) -> QWidget:
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(16)
     for key, text in (
-        ("yes", "可以交换"),
-        ("no", "不可交换"),
+        ("yes", "可以调课"),
+        ("no", "不可调课"),
         ("curr", "当前选中"),
         ("same", "相同学科"),
     ):
@@ -634,13 +634,14 @@ class Generate(QFrame):
                     self.timetable_preview.setItem(i,j,item)
                 if target_subjects==source_subjects:
                     item.setBackground(colors["same"])
+                    self.check_result[target_time]=False
                     item.setToolTip("相同学科")
                 elif can_place:
                     item.setBackground(colors["yes"])
-                    item.setToolTip("可以拖拽交换")
+                    item.setToolTip("可以调课")
                 else:
                     item.setBackground(colors["no"])
-                    item.setToolTip("不可交换，原因：\n"+"\n".join(failed_reasons))
+                    item.setToolTip("不可调课，原因：\n"+"\n".join(failed_reasons))
         if exchange and source_time:
             source_item=self.timetable_preview.item(source_time.lesson-1,source_time.day-1)
             if source_item:

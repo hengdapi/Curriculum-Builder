@@ -7,7 +7,6 @@ settings_file=f"{os.environ["APPDATA"]}/School-Timetable-Generator/settings.json
 class Settings(QConfig):
     morning_class_num=RangeConfigItem("table_style","morning_class_num",4,RangeValidator(1,10),restart=True)
     afternoon_class_num=RangeConfigItem("table_style","afternoon_class_num",2,RangeValidator(1,10),restart=True)
-    day_class_num:int=morning_class_num.value+afternoon_class_num.value
     show_teachers=OptionsConfigItem("table_style","show_teachers",True,BoolValidator(),restart=True)
     text_font=ConfigItem("table_style","text_font","宋体",restart=True)
     text_size=ConfigItem("table_style","text_size",9,restart=True)
@@ -17,6 +16,7 @@ class Settings(QConfig):
     subjects_info=ConfigItem("lessons_info","subjects_info",{},restart=True)
     lessons_info=ConfigItem("lessons_info","lessons_info",{},restart=True)
     teachers_info=ConfigItem("lessons_info","teachers_info",{},restart=True)
+    teachers_max_num=ConfigItem("lessons_info","teachers_max_num",{},restart=True)
     grades_info=ConfigItem("lessons_info","grades_info",{},restart=True)
 
     activity_info=ConfigItem("activity_info","activity_info",{},restart=True)
@@ -32,6 +32,10 @@ class Settings(QConfig):
     window_maximized=ConfigItem("ui","window_maximized",False)
 
     timetable_plans=ConfigItem("timetable","timetable_plans",{})
+
+    @property
+    def day_class_num(self):
+        return self.morning_class_num.value+self.afternoon_class_num.value
 
 def load_settings():
     cfg=Settings()

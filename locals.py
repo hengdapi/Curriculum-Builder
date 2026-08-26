@@ -214,7 +214,7 @@ def class_total_dataframe()->pd.DataFrame:
 
 def teacher_total_dataframe()->pd.DataFrame:
     data={}
-    for teacher in lesson_info.teachers.values():
+    for teacher in lesson_info.teacher_lst:
         data[teacher.name]={}
         timetable=teacher.timetable_dataframe.to_dict()
         for day,lessons in timetable.items():
@@ -314,7 +314,9 @@ class Teacher:
         :param name: 教师姓名
         """
         self.name = name
-        self.timetable:dict[Time,tuple[Class,Subject]]={}  # 记录教师已占用的课程时间
+        self.subjects:set[Subject]=set()
+        self.left_num:dict[Subject,dict[Time,int]]={}
+        self.timetable:dict[Time,list[tuple[Class,Subject]]]={Time(day,lesson,week):[] for day in range(1,6) for lesson in range(1,cfg.day_class_num+1) for week in ["sin","dou","all"]}  # 记录教师已占用的课程时间
 
     def __str__(self):
         return self.name
@@ -331,10 +333,12 @@ class Teacher:
         """
         添加教师的课程时间
         """
-        self.timetable[time]=(clas,subject)
+        self.timetable[time].append((clas,subject))
+        self.timetable[time].sort(key=lambda x:lesson_info.class_lst.index(x[0]))
+        self.left_num[subject][time]-=1
 
-    def get_lesson(self,time:Time):
-        return self.timetable.get(time)
+    def get_lessons(self,time:Time):
+        return self.timetable[time]
 
     def is_busy(self,time:Time):
         """
@@ -342,30 +346,53 @@ class Teacher:
         :return: 是否有课
         """
         if time.all:
-            return time.dou_week in self.timetable or time.sin_week in self.timetable or time.all_week in self.timetable
+            return self.timetable[time.dou_week] or self.timetable[time.sin_week] or self.timetable[time.all_week]
         elif time.sin:
-            return time.sin_week in self.timetable or time.all_week in self.timetable
+            return self.timetable[time.sin_week] or self.timetable[time.all_week]
         else:
-            return time.dou_week in self.timetable or time.all_week in self.timetable
+            return self.timetable[time.dou_week] or self.timetable[time.all_week]
 
-    def remove_lesson(self,time:Time):
+    def check(self,time:Time,subject:Subject,failed_reasons=None,conflict_lessons=None)->bool:
+        if conflict_lessons is None:
+            conflict_lessons=set()
+        if failed_reasons is None:
+            failed_reasons=set()
+
+        origin_len=len(failed_reasons)
+        if not self.is_busy(time):
+            return True
+        if not self.left_num[subject][time] or not self.timetable[time] or self.timetable[time][0][1]!=subject:
+            for conflict_time in (time.sin_week,time.dou_week,time.all_week) if time.all else (time,time.all_week):
+                if not self.get_lessons(conflict_time):
+                    continue
+                for conflict_class,conflict_subject in self.get_lessons(conflict_time):
+                    failed_reasons.add(f"课程冲突：{subject} 的任课老师 {self} 在 {conflict_time} 有 {conflict_class} 的 {conflict_subject} 课")
+                    conflict_lessons.add((conflict_class,conflict_time))
+        if len(failed_reasons)>origin_len:
+            return False
+        return True
+
+    def remove_lesson(self,time:Time,clas:Class|None=None):
         """
         移除教师在特定时间上的课程
         """
-        if time in self.timetable:
-            self.timetable.pop(time)
+        for lessons in self.timetable[time]:
+            if lessons[0]==clas or not clas:
+                self.left_num[lessons[1]][time]+=1
+                self.timetable[time].remove(lessons)
 
     @property
     def timetable_dataframe(self)->pd.DataFrame:
         data=copy.deepcopy(table_style())
-        for time,lesson in self.timetable.items():
-            if data.loc[time.to_str(False,True),time.to_str(True,False)]:
-                lines=data.loc[time.to_str(False,True),time.to_str(True,False)].split("\n")
-                lines[0]+=f"/{lesson[0]}"
-                lines[1]+=f"/{time.to_str(False,False,True)}{lesson[1]}"
-                data.loc[time.to_str(False,True),time.to_str(True,False)]="\n".join(lines)
-            else:
-                data.loc[time.to_str(False,True),time.to_str(True,False)]=f"{lesson[0]}\n{time.to_str(False,False,True)}{lesson[1]}"
+        for time,lessons in self.timetable.items():
+            for lesson in lessons:
+                if data.loc[time.to_str(False,True),time.to_str(True,False)]:
+                    lines=data.loc[time.to_str(False,True),time.to_str(True,False)].split("\n")
+                    lines[0]+=f"/{time.to_str(False,False,True)}{lesson[0]}"
+                    lines[1]+=f"/{time.to_str(False,False,True)}{lesson[1]}"
+                    data.loc[time.to_str(False,True),time.to_str(True,False)]="\n".join(lines)
+                else:
+                    data.loc[time.to_str(False,True),time.to_str(True,False)]=f"{time.to_str(False,False,True)}{lesson[0]}\n{time.to_str(False,False,True)}{lesson[1]}"
         return data
 
 class Subject:
@@ -486,7 +513,7 @@ class Class:
             else:
                 return
             logging.debug(f"删除 {self} {time} 的 {subject}")
-            self.get_teacher(subject).remove_lesson(time)
+            self.get_teacher(subject).remove_lesson(time,self)
             time=time.all_week
             self.timetable[time].remove(subject)
             subject.remove_lesson(self,time)
@@ -606,53 +633,65 @@ class Rule:
 class LessonInfo:
     def __init__(self):
         self.teachers: dict[str,Teacher]={}
+        self.teacher_names:list[str]=cfg.teachers_info.value
         self.subjects: dict[str,Subject]={}
+        self.subject_names:list[str]=cfg.subjects_info.value
         self.classes: dict[str,Class]={}
         self.class_names:list[str]=[]
         self.class_lst:list[Class]=[]
         self.rules: list[Rule]=[]
         self.saved=True
         logging.info("正在解析课程信息...")
-        
         lessons=cfg.lessons_info.value
-        subjects_str=cfg.subjects_info.value
-        teachers_str=cfg.teachers_info.value
         
-        logging.debug(f"课程信息：{len(lessons)}个班级，{len(subjects_str)}个科目，{len(teachers_str)}个老师")
+        logging.debug(f"课程信息：{len(lessons)}个班级，{len(self.subject_names)}个科目，{len(self.teacher_names)}个老师")
         
-        for subject in subjects_str:
+        for subject in self.subject_names:
             self.subjects[subject]=Subject(subject)
         logging.debug(f"已创建 {len(self.subjects)} 个科目对象")
-        
-        for teacher in teachers_str:
+
+        for teacher in self.teacher_names:
             self.teachers[teacher]=Teacher(teacher)
         logging.debug(f"已创建 {len(self.teachers)} 个教师对象")
         
         for idx, clas in enumerate(lessons):
             class_name=clas["班级"]
             self.classes[class_name]=Class(class_name,{})
-            self.class_names=list(self.classes.keys())
-            self.class_lst=[self.classes[clas_name] for clas_name in self.class_names]
             total_lessons=0
-            for subject in subjects_str:
+            for subject in self.subject_names:
                 if clas[subject+" - 任课老师"]:
                     self.classes[class_name].teachers[subject]=self.teachers[clas[subject+" - 任课老师"]]
+                    self.teachers[clas[subject+" - 任课老师"]].subjects.add(self.subjects[subject])
+                    if clas[subject+" - 任课老师"] in cfg.teachers_max_num.value:
+                        max_num=cfg.teachers_max_num.value[clas[subject+" - 任课老师"]][subject]
+                    else:
+                        max_num=1
+                    self.teachers[clas[subject+" - 任课老师"]].left_num[self.subjects[subject]]={Time(day,lesson,week):max_num for day in range(1,6) for lesson in range(1,cfg.day_class_num+1) for week in ["sin","dou","all"]}
                     lesson_count=int(clas[subject+" - 课时"])
                     for i in range(lesson_count):
                         self.classes[class_name].left_subjects.append(self.subjects[subject])
                     total_lessons+=lesson_count
             logging.debug(f"解析班级 {idx+1}/{len(lessons)}：{len(self.classes[class_name].teachers)} 位任课老师，{total_lessons} 节课")
-        
-        for subject in self.subjects.values():
-            subject.continue_times={clas:0 for clas in self.class_lst}
 
+        self.class_names=list(self.classes.keys())
+        self.class_lst=list(self.classes.values())
+        self.teacher_lst=list(self.teachers.values())
+        self.subject_lst=list(self.subjects.values())
         sys.setrecursionlimit(max(len(self.classes)*5*cfg.day_class_num*2,1000))
+
+        for teacher in self.teacher_lst:
+            if teacher.name not in cfg.teachers_max_num.value:
+                cfg.teachers_max_num.value[teacher.name]={}
+            for subject in teacher.subjects:
+                if subject.name not in cfg.teachers_max_num.value[teacher.name]:
+                    cfg.teachers_max_num.value[teacher.name][subject.name]=1
+        save_settings()
         logging.debug("课程信息解析完成")
 lesson_info=LessonInfo()
 
 priority_subjects:dict[Time,list[Subject]]={}
 half_subjects:set[Subject]=set()
-continue_num:dict[Subject,int]={subject:0 for subject in lesson_info.subjects.values()}
+continue_num:dict[Subject,int]={subject:0 for subject in lesson_info.subject_lst}
 set_lessons:list[tuple[Time,Subject]]=[]
 
 for rule in cfg.rules.value:

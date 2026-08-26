@@ -397,14 +397,24 @@ def display_teachers_timetable(teacher:Teacher,tablewidget:QTableWidget,show_sep
             if not curr_item:
                 continue
             curr_item.setData(Qt.UserRole,curr_item.text())
-            if curr_time in teacher.timetable:
+            if teacher.timetable[curr_time]:
                 continue
             sin_text=dou_text=""
             if teacher.is_busy(curr_time.sin_week):
-                sin_clas,sin_subject=teacher.get_lesson(curr_time.sin_week)
-                sin_text=f"{sin_clas}\n{sin_subject}"
+                sin_text=["",""]
+                for sin_clas,sin_subject in teacher.get_lessons(curr_time.sin_week):
+                    sin_text[0]+=f"/{sin_clas}"
+                    sin_text[1]+=f"/{sin_subject}"
+                sin_text[0]=sin_text[0][1:]
+                sin_text[1]=sin_text[1][1:]
+                sin_text="\n".join(sin_text)
             if teacher.is_busy(curr_time.dou_week):
-                dou_clas,dou_subject=teacher.get_lesson(curr_time.dou_week)
-                dou_text=f"{dou_clas}\n{dou_subject}"
+                dou_text=["",""]
+                for dou_clas,dou_subject in teacher.get_lessons(curr_time.dou_week):
+                    dou_text[0]+=f"/{dou_clas}"
+                    dou_text[1]+=f"/{dou_subject}"
+                dou_text[0]=dou_text[0][1:]
+                dou_text[1]=dou_text[1][1:]
+                dou_text="\n".join(dou_text)
             tablewidget.setCellWidget(lesson-1,day-1,sindou_widget(sin_text,dou_text,tablewidget.font(),show_separator))
             curr_item.setText("")

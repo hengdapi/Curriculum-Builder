@@ -184,6 +184,45 @@ class GradeMsgbox(MessageBoxBase):
             return False
         return True
 
+class TeacherMaxnumMsgbox(MessageBoxBase):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        subheader("设置老师同时上课最大数量",self,self.viewLayout,10)
+        self.teacher_combo=EditableComboBox()
+        self.teacher_combo.addItems(lesson_info.teacher_names)
+        self.teacher_combo.setCurrentIndex(-1)
+        self.teacher_combo.setPlaceholderText("请选择老师")
+        self.teacher_combo.setCompleter(QCompleter(lesson_info.teacher_names,self.teacher_combo))
+        self.teacher_combo.currentTextChanged.connect(self.show_cards)
+        add_widget(self.teacher_combo,self.viewLayout,0)
+
+        self.max_num_cards:list[SettingCard]=[]
+        self.max_nums=cfg.teachers_max_num.value
+
+        self.yesButton.setText("保存设置")
+
+    def show_cards(self):
+        teacher_name=self.teacher_combo.currentText()
+        if teacher_name not in lesson_info.teacher_names:
+            return
+        teacher=lesson_info.teachers[teacher_name]
+        for card in self.max_num_cards:
+            card.deleteLater()
+        self.max_num_cards.clear()
+        for subject in teacher.subjects:
+            max_num_card=SettingCard("",f"{subject} 同时最大上课数量","")
+            max_num_card.hBoxLayout.addSpacing(50)
+            max_num_spinbox=SpinBox()
+            max_num_spinbox.setRange(1,len(lesson_info.classes))
+            max_num_spinbox.setValue(cfg.teachers_max_num.value[teacher_name][subject.name])
+            max_num_spinbox.valueChanged.connect(lambda value,teacher=teacher_name,subject=subject.name:self.update_value(value,teacher,subject))
+            add_widget(max_num_spinbox,max_num_card.hBoxLayout)
+            add_widget(max_num_card,self.viewLayout,0)
+            self.max_num_cards.append(max_num_card)
+
+    def update_value(self,value,teacher_name,subject_name):
+        self.max_nums[teacher_name][subject_name]=value
+
 class Settings(QFrame):
     def save_cfg(self,attr:str,value):
         setattr(getattr(cfg,attr),"value",value)
@@ -197,6 +236,15 @@ class Settings(QFrame):
                 cfg.lessons_time.value[str(lesson)]=[[0,0],[0,0]]
         save_settings()
         self.show_lesson_time_group()
+
+    def set_teachers_max_num(self):
+        msgbox=TeacherMaxnumMsgbox(self)
+        if not msgbox.exec():
+            return
+        for teacher in lesson_info.teacher_lst:
+            for subject in teacher.subjects:
+                cfg.teachers_max_num.value[teacher.name][subject.name]=msgbox.max_nums[teacher.name][subject.name]
+        save_settings()
 
     def show_lessons_info(self):
         lessons_info=pd.DataFrame(cfg.lessons_info.value)
@@ -583,8 +631,8 @@ class Settings(QFrame):
             self.afternoon_class_num.valueChanged.connect(lambda :self.on_class_num_changed("afternoon"))
             add_widget(self.afternoon_class_num,self.layout,0)
 
-            self.lesson_length_group=ExpandGroupSettingCard(FluentIcon.STOP_WATCH,"课程起止时间（显示在课时下方）")
-            add_widget(self.lesson_length_group,self.layout)
+            self.lesson_length_group=ExpandGroupSettingCard(FluentIcon.DATE_TIME,"课程起止时间（显示在课时下方）")
+            add_widget(self.lesson_length_group,self.layout,0)
             self.on_class_num_changed()
 
             subheader("年级信息",self,self.layout)
@@ -676,7 +724,10 @@ class Settings(QFrame):
             self.average_subjects_card=SwitchSettingCard(FluentIcon.SPEED_MEDIUM,"平均分配课程","生成时尽量将学科平均分配到每一天（在不违背生成规则的前提下）",cfg.average_subjects)
             add_widget(self.average_subjects_card,self.layout,0)
             self.forbid_noon_continuous_card=SwitchSettingCard(FluentIcon.CALENDAR,"允许跨上下午连堂","允许将连堂课排在上午最后一节和下午第一节",cfg.allow_noon_continuous)
-            add_widget(self.forbid_noon_continuous_card,self.layout)
+            add_widget(self.forbid_noon_continuous_card,self.layout,0)
+            self.teachers_max_num_group=PushSettingCard("设置数量",FluentIcon.BOOK_SHELF,"老师同时最大上课数量","设置同一时间每个老师各个学科可以同时上课最大的数量（即最多允许该老师同时上几个班级该学科的课）")
+            add_widget(self.teachers_max_num_group,self.layout)
+            self.teachers_max_num_group.clicked.connect(self.set_teachers_max_num)
 
             add_widget(SeparatorWidget(orient=Qt.Horizontal),self.layout)
 

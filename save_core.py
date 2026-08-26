@@ -301,7 +301,7 @@ def save_total_teachers_timetable(filename:str,ext:str):
     for day in range(1,6):
         start_row=7
         start_column=(day-1)*(lesson_num+activity_num)+2
-        teachers=list(lesson_info.teachers.values())
+        teachers=lesson_info.teacher_lst
         for i in range(len(teachers)):
             teacher=teachers[i]
             ws.cell(start_row+i,1).value=teacher.name

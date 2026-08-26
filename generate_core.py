@@ -11,13 +11,7 @@ def check(clas: Class,time: Time,subject: Subject,failed_reasons=None,conflict_l
         reasons_num=len(failed_reasons)
         logging.debug(f"检查能否在 {clas} 的 {time} 安排 {subject}")
         teacher=clas.get_teacher(subject)
-        if teacher.is_busy(time):
-            for conflict_time in (time.sin_week,time.dou_week,time.all_week) if time.all else (time,):
-                if not teacher.get_lesson(conflict_time):
-                    continue
-                conflict_class,conflict_subject=teacher.get_lesson(conflict_time)
-                failed_reasons.add(f"课程冲突：{subject} 的任课老师 {teacher} 在 {conflict_time} 有 {conflict_class} 的 {conflict_subject} 课")
-                conflict_lessons.add((conflict_class,conflict_time))
+        teacher.check(time,subject,failed_reasons,conflict_lessons)
         if subject in set_lessons:
             failed_reasons.add(f"规则冲突：{subject} 是固定课程")
         time=time.all_week
@@ -78,10 +72,10 @@ def check_exchange(clas:Class,time1:Time,time2:Time,failed_reasons:set,conflict_
     if not subjects1:
         return False
     if (time1,subjects1[0]) in set_lessons:
-        failed_reasons.add(f"规则冲突：{subjects1[0]} 必须排在 {time1}")
+        failed_reasons.add(f"规则冲突：{time1} 必须排 {subjects1[0]}")
         return False
     if (time2,subjects2[0]) in set_lessons:
-        failed_reasons.add(f"规则冲突：{subjects2[0]} 必须排在 {time2}")
+        failed_reasons.add(f"规则冲突：{time2} 必须排 {subjects2[0]}")
         return False
     clas.remove_lesson(time1)
     clas.remove_lesson(time2)
