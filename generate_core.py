@@ -223,16 +223,18 @@ class GenerateThread(QThread):
                                     return
                                 clas.remove_lesson(curr_time.dou_week)
                         clas.remove_lesson(curr_time.sin_week)
-                    # 连堂
                     elif subject not in half_subjects and check(clas, curr_time, subject):
+                        # 连堂
                         add_continue=False
-                        if subject.get_continue_times(clas)<continue_num[subject] and clas.left_subjects.count(subject)>=2 and \
-                                (cfg.allow_noon_continuous.value or curr_time.lesson!=cfg.morning_class_num.value) and curr_time.lesson!=cfg.day_class_num:
+                        if subject.get_continue_times(clas)<continue_num[subject] and clas.left_subjects.count(subject)>=2:
                             if continue_num[subject]-subject.get_continue_times(clas)==clas.left_subjects.count(subject)/2:
-                                add_continue=True
-                            else:
+                                if check(clas,next_time,subject) and (cfg.allow_noon_continuous.value or curr_time.lesson!=cfg.morning_class_num.value) and curr_time.lesson!=cfg.day_class_num:
+                                    add_continue=True
+                                else:
+                                    continue
+                            elif check(clas,next_time,subject) and (cfg.allow_noon_continuous.value or curr_time.lesson!=cfg.morning_class_num.value) and curr_time.lesson!=cfg.day_class_num:
                                 add_continue=random.choice([True,False])
-                            if add_continue and check(clas,next_time,subject):
+                            if add_continue:
                                 clas.add_lesson(next_time,subject)
                             else:
                                 continue
