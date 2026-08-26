@@ -31,7 +31,7 @@ logging.getLogger().addHandler(file_handler)
 logging.info("\n\n"+"="*60)
 logging.info(f"程序开始启动")
 appdata=os.path.join(os.environ["APPDATA"],"School-Timetable-Generator")
-project_url="https://gitcode.com/hengdapi/School-Timetable-Generator"
+gitcode_url="https://gitcode.com/hengdapi/School-Timetable-Generator"
 github_url="https://github.com/hengdapi/School-Timetable-Generator"
 
 def check_update(window,show_no_update=False):
