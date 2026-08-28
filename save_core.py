@@ -4,6 +4,7 @@ from PySide6.QtCore import Signal,QThread
 from locals import *
 from openpyxl import Workbook
 from openpyxl.styles import Font,Alignment,Border,Side
+from cses_core import export_cses_all, export_cses_all_v1
 import os,time
 
 black_side = Side(border_style="thin", color="000000")
@@ -379,6 +380,12 @@ class SaveThread(QThread):
             if self.file=="all" or self.file=="total_teachers":
                 logging.debug("导出教师总表（横）")
                 save_total_teachers_timetable(self.filename,self.ext)
+            if self.file=="cses":
+                logging.debug("导出CSES v2课表（YAML）")
+                export_cses_all(self.filename)
+            if self.file=="cses_v1":
+                logging.debug("导出CSES v1课表（YAML）")
+                export_cses_all_v1(self.filename)
             
             elapsed_time = time.time() - start_time
             logging.info(f"课程表导出完成，耗时{elapsed_time:.2f}秒")

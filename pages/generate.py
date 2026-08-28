@@ -237,6 +237,9 @@ class Generate(QFrame):
         self.save_menu.addAction(Action("导出教师课表",triggered=lambda :self.save_timetable("teachers")))
         self.save_menu.addAction(Action("导出班级总表",triggered=lambda :self.save_timetable("total_classes")))
         self.save_menu.addAction(Action("导出教师总表",triggered=lambda :self.save_timetable("total_teachers")))
+        self.save_menu.addSeparator()
+        self.save_menu.addAction(Action("导出CSES课表v1",triggered=lambda :self.save_timetable("cses_v1"),toolTip="可直接导入Class Island、Class Widget等软件"))
+        self.save_menu.addAction(Action("导出CSES课表v2",triggered=lambda :self.save_timetable("cses"),toolTip="当前主流软件尚未支持，如提示导入失败请尝试v1版本导入"))
         self.save_button.setMenu(self.save_menu)
         add_widget(self.save_button,self.operation_layout)
         add_widget(SeparatorWidget(orient=Qt.Vertical),self.operation_layout)
@@ -1037,17 +1040,27 @@ class Generate(QFrame):
             if not dialog.exec():
                 logging.info("用户取消导出（暂存区有课程）")
                 return
-        filename,_=QFileDialog.getSaveFileName(self,"导出课程表","","Microsoft Excel 工作表(*.xlsx);;Microsoft Excel 97-2003 工作表(*.xls)")
-        if not filename:
-            logging.info("用户取消导出")
-            return
-        logging.info(f"导出课程表文件名：{filename}")
+        if file in ("cses","cses_v1"):
+            # CSES 导出为每个班级一个 YAML 文件，需选择保存目录
+            filename=QFileDialog.getExistingDirectory(self,"导出CSES课表（每个班级一个YAML文件）","")
+            if not filename:
+                logging.info("用户取消导出")
+                return
+            logging.info(f"导出CSES课表目录：{filename}")
+        else:
+            filename,_=QFileDialog.getSaveFileName(self,"导出课程表","","Microsoft Excel 工作表(*.xlsx);;Microsoft Excel 97-2003 工作表(*.xls)")
+            if not filename:
+                logging.info("用户取消导出")
+                return
+            logging.info(f"导出课程表文件名：{filename}")
 
         self.save_Toast=Toast.info("正在导出课程表，请稍候...","",parent=self,duration=-1)
         self.save_progress=IndeterminateProgressBar()
         self.save_Toast.addWidget(self.save_progress, alignment=Qt.AlignmentFlag.AlignCenter)
 
         name,ext=os.path.splitext(filename)
+        if file in ("cses","cses_v1"):
+            name,ext=filename,""
         save_thread=SaveThread(name,ext,file,self)
         save_thread.success.connect(self.on_save_success)
         save_thread.error.connect(self.on_save_error)

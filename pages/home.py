@@ -3,7 +3,7 @@ import webbrowser,time
 
 from PySide6.QtGui import QIcon
 
-from locals import project_url,check_update,app_version,github_url
+from locals import gitcode_url,check_update,app_version,github_url
 from style import *
 from PySide6.QtCore import QTimer,Qt
 from PySide6.QtWidgets import QFrame,QVBoxLayout
@@ -25,7 +25,7 @@ class IssueHelp(MessageBoxBase):
         self.cancelButton.setText("关闭")
 
     def validate(self) -> bool:
-        webbrowser.open(f"{project_url}/issues")
+        webbrowser.open(f"{gitcode_url}/issues")
         return False
 
 class Home(QFrame):
@@ -48,7 +48,7 @@ class Home(QFrame):
         self.project_link=DropDownPushButton(FluentIcon.GLOBE,"打开项目页面")
         self.project_link.setFixedSize(170, 40)
         project_menu=RoundMenu(parent=self.project_link)
-        project_menu.addAction(Action(QIcon("images/gitcode.png"),"GitCode",triggered=lambda:webbrowser.open(project_url)))
+        project_menu.addAction(Action(QIcon("images/gitcode.png"),"GitCode",triggered=lambda:webbrowser.open(gitcode_url)))
         project_menu.addAction(Action(FluentIcon.GITHUB,"GitHub",triggered=lambda:webbrowser.open(github_url)))
         self.project_link.setMenu(project_menu)
         add_widget(self.project_link,self.about_layout,10)

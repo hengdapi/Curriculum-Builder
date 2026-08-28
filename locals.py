@@ -61,7 +61,7 @@ def check_update(window,show_no_update=False):
         view_update_button=PushButton()
         view_update_button.setIcon(FluentIcon.INFO)
         view_update_button.setText("查看详细信息")
-        view_update_button.clicked.connect(lambda:webbrowser.open(f"{project_url}/releases/{response["tag_name"]}"))
+        view_update_button.clicked.connect(lambda:webbrowser.open(f"{gitcode_url}/releases/{response["tag_name"]}"))
         window.update_msg.addWidget(view_update_button, alignment=Qt.AlignmentFlag.AlignLeft)
         download_button=PrimaryPushButton()
         download_button.setIcon(FluentIcon.DOWNLOAD)
