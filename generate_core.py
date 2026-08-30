@@ -117,13 +117,18 @@ class GenerateThread(QThread):
     finished_signal=Signal(set)  # 生成成功
     progress_signal=Signal(tuple)  # 进度信息
 
-    def __init__(self,class_lst:list[Class],parent=None):
+    def __init__(self,class_lst:list[Class]|str,parent=None):
         super().__init__(parent)
-        self.class_lst=class_lst
+        if class_lst=="left":
+            self.generate_left=True
+            self.class_lst=lesson_info.class_lst
+        else:
+            self.generate_left=False
+            self.class_lst=class_lst
         self.last_progress_time=0  # 记录上次发送进度的时间
         self.progress_interval=0.8  # 进度更新间隔（秒）
         self.skipped_lessons:set[tuple[Class,Time]]=set()
-        self.tried_times:dict[Class,dict[Time,int]]={clas:{Time(day,lesson):0 for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)} for clas in class_lst}
+        self.tried_times:dict[Class,dict[Time,int]]={clas:{Time(day,lesson):0 for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)} for clas in self.class_lst}
         logging.debug("创建GenerateThread实例")
 
     def run(self):
@@ -133,8 +138,9 @@ class GenerateThread(QThread):
             start_time = time.time()
             
             logging.debug("重新初始化班级")
-            for clas in self.class_lst:
-                clas.reset()
+            if not self.generate_left:
+                for clas in self.class_lst:
+                    clas.reset()
 
             logging.debug(f"开始DFS分配剩余课程，共{len(self.class_lst)}个班级")
             self.finish=False
@@ -171,14 +177,14 @@ class GenerateThread(QThread):
             next_time=curr_time.next
             logging.debug(f"当前时间：{curr_time}")
             self.tried_times[clas][curr_time]+=1
-            if self.tried_times[clas][curr_time]>self.max_tries:
-
+            if self.tried_times[clas][curr_time]>cfg.max_tries.value:
+                self.skipped_lessons.add((clas,curr_time))
                 logging.debug(f"{curr_time} 尝试次数过多，跳过")
+            elif clas.get_lessons(curr_time):
+                logging.debug(f"{curr_time}存在已排课程")
             elif curr_time in clas.set_lessons:
                 logging.debug(f"{curr_time}存在固定课程")
                 clas.add_lesson(curr_time,clas.set_lessons[curr_time])
-            elif clas.get_lessons(curr_time):
-                logging.debug(f"{curr_time}存在已排课程")
             else:
                 if curr_time in clas.priority_subjects:
                     curr_priority=clas.priority_subjects[curr_time]

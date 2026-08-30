@@ -566,7 +566,7 @@ class Generate(QFrame):
             self.generate_thread=GenerateThread(class_lst)
             self.generate_thread.finished_signal.connect(self.on_generation_finished)
             self.generate_thread.progress_signal.connect(self.on_progress_update)
-            self.generate_thread.start()
+            QTimer.singleShot(500,self.generate_thread.start)
             logging.info("课程表生成线程已启动")
         except Exception as error:
             e=traceback.format_exc()

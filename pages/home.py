@@ -11,13 +11,13 @@ from PySide6.QtWidgets import QFrame,QVBoxLayout
 class IssueHelp(MessageBoxBase):
     def __init__(self,parent=None):
         super().__init__(parent=parent)
-        self.title=subheader("创建议题",self,self.viewLayout)
+        self.title=subheader("提供反馈",self,self.viewLayout)
         self.image_view=FlipView()
         self.image_view.addImages(["images/issue_help.png","images/issue_help2.png","images/issue_help3.png"])
         self.image_view.setFixedSize(820,300)
         self.image_view.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         add_widget(self.image_view,self.viewLayout,0)
-        self.content_label=write("如果您不熟悉issue，请您详细阅读以上图片，了解如何创建议题。",self,self.viewLayout)
+        self.content_label=write("如果您不熟悉如何为开源项目提交议题，请您详细阅读以上图片，了解如何提交议题。\n“议题”（即图中的issue）可以简单理解为“工单”，您需要在“议题”中尽可能详细地提供已知信息，以便我们更快地解决问题。",self,self.viewLayout)
         self.content_label.setWordWrap(True)
         add_widget(self.content_label,self.viewLayout,0)
         self.yesButton.setText("打开议题页面")
@@ -71,7 +71,7 @@ class Home(QFrame):
         self.copy_log_button.setFixedSize(170,40)
         self.copy_log_button.clicked.connect(self.copy_log)
 
-        self.send_issue=button("创建议题",self,self.feedback_layout,10)
+        self.send_issue=button("提供反馈",self,self.feedback_layout,10)
         self.send_issue.setIcon(FluentIcon.FEEDBACK)
         self.send_issue.setFixedSize(130, 40)
         self.send_issue.clicked.connect(self.on_send_issue)
