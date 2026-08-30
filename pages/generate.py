@@ -201,13 +201,14 @@ class Generate(QFrame):
         self.generate_button.setIcon(FluentIcon.BRUSH)
         self.generate_button.setFixedSize(160,40)
         self.generate_menu=RoundMenu()
+        self.generate_left_action=Action("生成剩余课表",triggered=lambda :self.generate_timetables("left"))
         self.generate_school_action=Action("生成全校课表",triggered=lambda :self.generate_timetables("school"))
         self.generate_grade_action=Action("生成本年段课表",triggered=lambda :self.generate_timetables("grade"))
         self.generate_class_action=Action("生成本班课表",triggered=lambda :self.generate_timetables("class"))
         self.generate_custom_action=Action("生成自定义部分课表",triggered=lambda :self.generate_timetables("custom"))
         self.generate_grade_action.setEnabled(False)
         self.generate_class_action.setEnabled(False)
-        self.generate_menu.addActions([self.generate_school_action,self.generate_grade_action,self.generate_class_action,self.generate_custom_action])
+        self.generate_menu.addActions([self.generate_left_action,self.generate_school_action,self.generate_grade_action,self.generate_class_action,self.generate_custom_action])
         self.generate_button.setMenu(self.generate_menu)
         add_widget(self.generate_button,self.operation_layout,0)
 
@@ -262,16 +263,15 @@ class Generate(QFrame):
         self.curr_plan.setFixedHeight(40)
         self.operation_layout.addStretch(1)
 
-        self.progress_widget=QWidget()
-        self.progress_layout=QVBoxLayout(self.progress_widget)
+        self.progress_toast=Toast.info("正在生成课程表","",duration=-1,parent=self,position=ToastPosition.BOTTOM,isClosable=False)
         self.progress_bar=ProgressBar()
+        self.progress_bar.setFixedWidth(300)
         self.progress_bar.setMaximum(100)
-        add_widget(self.progress_bar,self.progress_layout,0)
+        self.progress_toast.addWidget(self.progress_bar,alignment=Qt.AlignCenter)
 
-        self.log_label:BodyLabel=write("",self,self.progress_layout)
-        self.progress_layout.addStretch(1)
-        add_widget(self.progress_widget,self.layout,0)
-        self.progress_widget.hide()
+        self.log_label:BodyLabel=BodyLabel()
+        self.progress_toast.addWidget(self.log_label,alignment=Qt.AlignCenter)
+        self.progress_toast.hide()
 
         # 课程表预览
         self.object_splitter=Splitter(Qt.Horizontal)
@@ -534,18 +534,15 @@ class Generate(QFrame):
                 if not msgbox.exec():
                     return
 
-            if generate_object=="school":
+            if generate_object=="left":
+                logging.info("生成剩余课表")
+                class_lst="left"
+            elif generate_object=="school":
                 logging.info("生成全校课表")
                 class_lst=lesson_info.class_lst
             elif generate_object=="grade":
                 logging.info("生成年段课表")
-                if self.preview_mode=="grade":
-                    class_lst=[lesson_info.classes[class_name] for class_name in cfg.grades_info.value[self.preview_object]]
-                else:
-                    for grade,class_names in cfg.grades_info.value.items():
-                        if self.preview_object.name in class_names:
-                            class_lst=[lesson_info.classes[class_name] for class_name in class_names]
-                            break
+                class_lst=self.preview_grade.classes
             elif generate_object=="class":
                 logging.info("生成班级课表")
                 class_lst=[self.preview_object]
@@ -561,7 +558,7 @@ class Generate(QFrame):
             # 禁用生成按钮防止重复点击
             self.generate_button.setEnabled(False)
             self.load_plan_action.setEnabled(False)
-            self.progress_widget.show()
+            self.progress_toast.show()
             self.progress_bar.setValue(0)
 
             # 创建并启动线程
@@ -576,14 +573,15 @@ class Generate(QFrame):
             logging.critical(f"生成课程表出错：\n{e}")
             show_error(self,error)
 
-    def on_generation_finished(self):
+    def on_generation_finished(self,skipped_lessons:set[tuple[Class,Time]]):
         logging.info("排课已完成")
+        Toast.success("自动排课成功","跳过了以下课程：\n"+"\n".join([f"{clas} {time}" for clas,time in skipped_lessons]) if skipped_lessons else "没有跳过课程",duration=-1 if skipped_lessons else 4000,parent=self)
         lesson_info.saved=False
         self.generate_finished=True
         self.generate_button.setEnabled(True)
         self.refresh_plan_actions()
         self.curr_plan.setText("当前方案：未保存")
-        self.progress_widget.hide()
+        self.progress_toast.hide()
         self.refresh_object_tree()
         self.refresh_timetable()
 
@@ -615,14 +613,14 @@ class Generate(QFrame):
                 else:
                     # 添加模式（从暂存区拖来）
                     if target_subjects:
-                        if len(target_subjects)==1 and target_subjects[0] in half_subjects and source_subjects[0] in half_subjects:
+                        if len(target_subjects)==1 and target_subjects[0] in self.preview_object.half_subjects and source_subjects[0] in self.preview_object.half_subjects:
                             can_place=check(clas,target_time.dou_week,source_subjects[0],failed_reasons,conflict_lessons)
                         else:
                             # 有课程：检查能否放下（先假设把原来的移到暂存区不检查，只检查新课程能否放这里）
                             can_place=check(clas,target_time,source_subjects[0],failed_reasons,conflict_lessons)
                     else:
                         # 空位：直接检查能否放置
-                        if source_subjects[0] in half_subjects:
+                        if source_subjects[0] in self.preview_object.half_subjects:
                             can_place=check(clas,target_time.sin_week,source_subjects[0],failed_reasons,conflict_lessons)
                         else:
                             can_place=check(clas,target_time,source_subjects[0],failed_reasons,conflict_lessons)
@@ -792,9 +790,9 @@ class Generate(QFrame):
                     force=True
             # 目标位置已有课程：先把原课程移入暂存区
             target_subjects=clas.get_lessons(target_time)
-            if len(target_subjects)==1 and target_subjects[0] in half_subjects and not force and check(clas,target_time.dou_week,source_subject):
+            if len(target_subjects)==1 and target_subjects[0] in self.preview_object.half_subjects and not force and check(clas,target_time.dou_week,source_subject):
                 clas.add_lesson(target_time.dou_week,source_subject)
-            elif not target_subjects and source_subject in half_subjects:
+            elif not target_subjects and source_subject in self.preview_object.half_subjects:
                 clas.add_lesson(target_time.sin_week,source_subject)
             else:
                 logging.debug(f"目标位置已有课程，先将其移入暂存区")
@@ -855,7 +853,7 @@ class Generate(QFrame):
         try:
             curr_time=Time(lesson_item.column()+1,lesson_item.row()+1)
             subjects=self.preview_object.get_lessons(curr_time)
-            if not subjects or (curr_time,subjects[0]) in set_lessons:
+            if not subjects or (curr_time,subjects[0]) in self.preview_object.set_lessons.items():
                 return
             self.preview_object.remove_lesson(curr_time)
             self.refresh_timetable()
@@ -983,8 +981,7 @@ class Generate(QFrame):
                 if set_size:
                     self.set_timetables_size()
             elif object_item.parent() is not None and object_item.parent().data(0,Qt.UserRole) =="班级课表":
-                self.preview_mode="grade"
-                self.preview_object=object_item.data(0,Qt.UserRole)
+                self.preview_grade=lesson_info.grades[object_item.data(0,Qt.UserRole)]
                 self.generate_grade_action.setEnabled(True)
                 self.clear_grade_action.setEnabled(True)
             elif object_item.parent().parent() is not None and object_item.parent().parent().data(0,Qt.UserRole) =="班级课表":
@@ -995,6 +992,7 @@ class Generate(QFrame):
                 self.clear_class_action.setEnabled(True)
                 self.timetable_preview.setDragEnabled(True)
                 self.preview_object=lesson_info.classes[object_item.data(0,Qt.UserRole)]
+                self.preview_grade=self.preview_object.grade
                 self.timetable_subheader.setText(f"{self.preview_object} 课程表")
                 display_df_in_table(self.timetable_preview,self.preview_object.timetable_dataframe)
                 for day in range(1,6):

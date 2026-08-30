@@ -1,6 +1,8 @@
-import random,time
+import random
+import time
+
 from locals import *
-from PySide6.QtCore import QThread,Signal
+
 
 def check(clas: Class,time: Time,subject: Subject,failed_reasons=None,conflict_lessons=None) -> bool:
     if conflict_lessons is None:
@@ -12,10 +14,12 @@ def check(clas: Class,time: Time,subject: Subject,failed_reasons=None,conflict_l
         logging.debug(f"检查能否在 {clas} 的 {time} 安排 {subject}")
         teacher=clas.get_teacher(subject)
         teacher.check(time,subject,failed_reasons,conflict_lessons)
-        if subject in set_lessons:
+        if subject in clas.set_lessons:
             failed_reasons.add(f"规则冲突：{subject} 是固定课程")
         time=time.all_week
         for rule in lesson_info.rules:
+            if clas not in rule.scope:
+                continue
             if rule.type==Rule_type.set_time:
                 if rule.time==time and rule.subject!=subject:
                     failed_reasons.add(f"规则冲突：{time} 必须排 {rule.subject}")
@@ -57,7 +61,7 @@ def check_exchange(clas:Class,time1:Time,time2:Time,failed_reasons:set,conflict_
     if not subjects1 or not subjects2:
         return False
     # 两个半周课程：检查能否拼接
-    if len(subjects1)==1 and subjects1[0] in half_subjects and len(subjects2)==1 and subjects2[0] in half_subjects and check(clas,time2.dou_week,subjects1[0],failed_reasons):
+    if len(subjects1)==1 and subjects1[0] in clas.half_subjects and len(subjects2)==1 and subjects2[0] in clas.half_subjects and check(clas,time2.dou_week,subjects1[0],failed_reasons):
         return True
     # 目标位置是空位：直接检查源课程能否放入
     if not subjects2:
@@ -71,10 +75,10 @@ def check_exchange(clas:Class,time1:Time,time2:Time,failed_reasons:set,conflict_
     # 源位置是空位：理论上不应该发生
     if not subjects1:
         return False
-    if (time1,subjects1[0]) in set_lessons:
+    if (time1,subjects1[0]) in clas.set_lessons.items():
         failed_reasons.add(f"规则冲突：{time1} 必须排 {subjects1[0]}")
         return False
-    if (time2,subjects2[0]) in set_lessons:
+    if (time2,subjects2[0]) in clas.set_lessons.items():
         failed_reasons.add(f"规则冲突：{time2} 必须排 {subjects2[0]}")
         return False
     clas.remove_lesson(time1)
@@ -99,18 +103,18 @@ def check_exchange(clas:Class,time1:Time,time2:Time,failed_reasons:set,conflict_
     clas.timetable[time1],clas.timetable[time2]=subjects2,subjects1
     check_continue=True
     for subject in subjects1:
-        if subject.get_continue_times(clas)<continue_num[subject]:
+        if subject.get_continue_times(clas)<clas.continue_num[subject]:
             check_continue=False
-            failed_reasons.add(f"规则冲突：交换后 {subject} 只能连堂 {subject.get_continue_times(clas)} 次（规则要求连堂 {continue_num[subject]} 次） ")
+            failed_reasons.add(f"规则冲突：交换后 {subject} 只能连堂 {subject.get_continue_times(clas)} 次（规则要求连堂 {clas.continue_num[subject]} 次） ")
     for subject in subjects2:
-        if subject.get_continue_times(clas)<continue_num[subject]:
+        if subject.get_continue_times(clas)<clas.continue_num[subject]:
             check_continue=False
-            failed_reasons.add(f"规则冲突：交换后 {subject} 只能连堂 {subject.get_continue_times(clas)} 次（规则要求连堂 {continue_num[subject]} 次） ")
+            failed_reasons.add(f"规则冲突：交换后 {subject} 只能连堂 {subject.get_continue_times(clas)} 次（规则要求连堂 {clas.continue_num[subject]} 次） ")
     clas.timetable[time1],clas.timetable[time2]=subjects1,subjects2
     return check1 and check2 and check_continue
 
 class GenerateThread(QThread):
-    finished_signal=Signal()  # 生成成功
+    finished_signal=Signal(set)  # 生成成功
     progress_signal=Signal(tuple)  # 进度信息
 
     def __init__(self,class_lst:list[Class],parent=None):
@@ -118,6 +122,8 @@ class GenerateThread(QThread):
         self.class_lst=class_lst
         self.last_progress_time=0  # 记录上次发送进度的时间
         self.progress_interval=0.8  # 进度更新间隔（秒）
+        self.skipped_lessons:set[tuple[Class,Time]]=set()
+        self.tried_times:dict[Class,dict[Time,int]]={clas:{Time(day,lesson):0 for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)} for clas in class_lst}
         logging.debug("创建GenerateThread实例")
 
     def run(self):
@@ -129,14 +135,7 @@ class GenerateThread(QThread):
             logging.debug("重新初始化班级")
             for clas in self.class_lst:
                 clas.reset()
-            
-            # 1. 固定时间优先分配
-            logging.debug("填充固定时间")
-            for lesson in set_lessons:
-                for clas in self.class_lst:
-                    clas.add_lesson(lesson[0],lesson[1])
 
-            # 2. 自动分配剩余课程
             logging.debug(f"开始DFS分配剩余课程，共{len(self.class_lst)}个班级")
             self.finish=False
             self.dfs(self.class_lst[0],Time(1,1))
@@ -147,7 +146,7 @@ class GenerateThread(QThread):
             e=traceback.format_exc()
             logging.critical(f"生成课程表时错误：\n{e}")
         self.finish=True
-        self.finished_signal.emit()
+        self.finished_signal.emit(self.skipped_lessons)
 
     def should_emit_progress(self):
         """判断是否应该发送进度信号"""
@@ -170,19 +169,24 @@ class GenerateThread(QThread):
                     last=True
 
             next_time=curr_time.next
-            logging.debug(f"计算下一时间：{next_time}")
+            logging.debug(f"当前时间：{curr_time}")
+            self.tried_times[clas][curr_time]+=1
+            if self.tried_times[clas][curr_time]>self.max_tries:
 
-            if not clas.get_lessons(curr_time):
-                if curr_time in priority_subjects:
-                    curr_priority=priority_subjects[curr_time]
+                logging.debug(f"{curr_time} 尝试次数过多，跳过")
+            elif curr_time in clas.set_lessons:
+                logging.debug(f"{curr_time}存在固定课程")
+                clas.add_lesson(curr_time,clas.set_lessons[curr_time])
+            elif clas.get_lessons(curr_time):
+                logging.debug(f"{curr_time}存在已排课程")
+            else:
+                if curr_time in clas.priority_subjects:
+                    curr_priority=clas.priority_subjects[curr_time]
                 else:
                     curr_priority=[]
                 logging.debug(f"当前优先课程：{[i.name for i in curr_priority]}")
 
-                curr_subjects=set(clas.left_subjects)
-                if curr_time.half:
-                    curr_subjects&=half_subjects
-                curr_subjects=list(curr_subjects)
+                curr_subjects=list(set(clas.left_subjects))
                 random.shuffle(curr_subjects)
 
                 if cfg.average_subjects.value:
@@ -207,10 +211,12 @@ class GenerateThread(QThread):
                 logging.debug(f"当前课程：{[i.name for i in curr_subjects]}")
 
                 for subject in curr_subjects:
+                    if subject not in clas.left_subjects:
+                        continue
                     # 单双周
-                    if subject in half_subjects and check(clas, curr_time.sin_week, subject):
+                    if subject in clas.half_subjects and check(clas, curr_time.sin_week, subject):
                         clas.add_lesson(curr_time.sin_week,subject)
-                        for subject2 in half_subjects&set(clas.left_subjects):
+                        for subject2 in clas.half_subjects&set(clas.left_subjects):
                             if not check(clas, curr_time.dou_week, subject2):
                                 continue
                             clas.add_lesson(curr_time.dou_week,subject2)
@@ -223,11 +229,11 @@ class GenerateThread(QThread):
                                     return
                                 clas.remove_lesson(curr_time.dou_week)
                         clas.remove_lesson(curr_time.sin_week)
-                    elif subject not in half_subjects and check(clas, curr_time, subject):
+                    elif subject not in clas.half_subjects and check(clas, curr_time, subject):
                         # 连堂
                         add_continue=False
-                        if subject.get_continue_times(clas)<continue_num[subject] and clas.left_subjects.count(subject)>=2:
-                            if continue_num[subject]-subject.get_continue_times(clas)==clas.left_subjects.count(subject)/2:
+                        if subject.get_continue_times(clas)<clas.continue_num[subject] and clas.left_subjects.count(subject)>=2:
+                            if clas.continue_num[subject]-subject.get_continue_times(clas)==clas.left_subjects.count(subject)/2:
                                 if check(clas,next_time,subject) and (cfg.allow_noon_continuous.value or curr_time.lesson!=cfg.morning_class_num.value) and curr_time.lesson!=cfg.day_class_num:
                                     add_continue=True
                                 else:
@@ -249,15 +255,14 @@ class GenerateThread(QThread):
                             clas.remove_lesson(curr_time)
                             if add_continue:
                                 clas.remove_lesson(next_time)
-            else:
-                logging.debug(f"{curr_time}已存在课程")
-                if not last:
-                    if curr_time.day==5 and curr_time.lesson==cfg.day_class_num:
-                        self.dfs(self.class_lst[self.class_lst.index(clas)+1],Time(1,1))
-                    else:
-                        self.dfs(clas,next_time)
-            if last and bool(clas.get_lessons(curr_time)):
+                return
+            if not last:
+                if curr_time.day==5 and curr_time.lesson==cfg.day_class_num:
+                    self.dfs(self.class_lst[self.class_lst.index(clas)+1],Time(1,1))
+                else:
+                    self.dfs(clas,next_time)
+            if last:
                 self.finish=True
         except:
             e=traceback.format_exc()
-            logging.critical(f"生成课程表出错：\n{e}")
+            logging.critical(f"生成课程表出错：{clas} {curr_time}\n{e}")

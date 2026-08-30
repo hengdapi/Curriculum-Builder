@@ -1,6 +1,4 @@
 # coding=utf-8
-import logging
-
 from PySide6.QtCore import QTime
 
 from qfluentwidgets_pro.components.date_time.picker_base import SeparatorWidget
@@ -32,7 +30,7 @@ class RuleMessageBox(MessageBoxBase):
             self.rule_combo.addItem(name.replace("|"," "),userData=[name,type])
         add_widget(self.rule_combo,self.viewLayout,0)
         if edit:
-            self.rule_combo.setCurrentText(rule_types[rule.type].replace("|",""))
+            self.rule_combo.setCurrentText(rule_types[rule.type].replace("|"," "))
             self.show_rule_strings()
         else:
             self.rule_combo.setCurrentIndex(-1)
@@ -47,45 +45,42 @@ class RuleMessageBox(MessageBoxBase):
             return True,None
         if not self.edit and new_rule in rules:
             return False,new_rule
-        if new_type==Rule_type.set_time:
-            for rule in rules:
+        for rule in rules:
+            if not {lesson_info.classes[item.text] for item in self.scope_combo.selectedItems()}&set(rule.scope):
+                continue
+            if new_type==Rule_type.set_time:
                 if rule.type in [Rule_type.set_time,Rule_type.priority_time] and rule.time==new_rule.time or\
                         rule.type==Rule_type.avoid_time and rule.time==new_rule.time and rule.subject==new_rule.subject:
                     return False,rule
-        elif new_type==Rule_type.avoid_time:
-            for rule in rules:
+            elif new_type==Rule_type.avoid_time:
                 if rule.type in [Rule_type.set_time,Rule_type.priority_time] and rule.subject==new_rule.subject and rule.time==new_rule.time:
                     return False,rule
-        elif new_type==Rule_type.priority_time:
-            for rule in rules:
+            elif new_type==Rule_type.priority_time:
                 if rule.type==Rule_type.priority_time and rule.time==new_rule.time:
                     return False,rule
                 elif rule.type==Rule_type.set_time and rule.time==new_rule.time:
                     return False,rule
-        elif new_type==Rule_type.set_num:
-            for rule in rules:
+            elif new_type==Rule_type.set_num:
                 if rule.type==Rule_type.set_num and rule.subject==new_rule.subject:
                     return False,rule
-        elif new_type==Rule_type.avoid_subject:
-            if new_rule.subjectA==new_rule.subjectB:
-                return False,new_rule
-            for rule in rules:
+            elif new_type==Rule_type.avoid_subject:
+                if new_rule.subjectA==new_rule.subjectB:
+                    return False,new_rule
                 if rule.type==Rule_type.avoid_subject and {rule.subjectA,rule.subjectB}=={new_rule.subjectA,new_rule.subjectB}:
                     return False,rule
-        elif new_type==Rule_type.avoid_teacher:
-            if new_rule.teacherA==new_rule.teacherB:
-                return False,new_rule
-            for rule in rules:
+            elif new_type==Rule_type.avoid_teacher:
+                if new_rule.teacherA==new_rule.teacherB:
+                    return False,new_rule
                 if rule.type==Rule_type.avoid_teacher and {rule.teacherA,rule.teacherB}=={new_rule.teacherA,new_rule.teacherB}:
                     return False,rule
-        elif new_type==Rule_type.set_continue:
-            for rule in rules:
-                if rule.type==Rule_type.set_continue and rule.subject==new_rule.subject:
-                    return False,rule
-        elif new_type==Rule_type.half_num:
-            for rule in rules:
-                if rule.type==Rule_type.half_num and rule.subject==new_rule.subject:
-                    return False,rule
+            elif new_type==Rule_type.set_continue:
+                for rule in rules:
+                    if rule.type==Rule_type.set_continue and rule.subject==new_rule.subject:
+                        return False,rule
+            elif new_type==Rule_type.half_num:
+                for rule in rules:
+                    if rule.type==Rule_type.half_num and rule.subject==new_rule.subject:
+                        return False,rule
         return True,None
 
     def show_rule_strings(self):
@@ -96,6 +91,8 @@ class RuleMessageBox(MessageBoxBase):
                 if item.widget():
                     item.widget().hide()
                     item.widget().deleteLater()
+        if hasattr(self,"scope_combo"):
+            self.scope_combo.deleteLater()
         self.string_elements.clear()
         name=name.split("|")
         for string in name:
@@ -125,6 +122,18 @@ class RuleMessageBox(MessageBoxBase):
                 add_widget(combo,string_layout)
                 self.string_layouts.append(string_layout)
                 self.string_elements[string_name]=[name_label,combo]
+        scope_layout=QHBoxLayout()
+        self.viewLayout.addLayout(scope_layout)
+        write("请选择规则生效范围：",self,scope_layout)
+        self.scope_combo=MultiSelectComboBox()
+        self.scope_combo.setMaximumWidth(300)
+        self.scope_combo.addItems(lesson_info.class_names)
+        if self.edit:
+            self.scope_combo.setSelectedIndices({lesson_info.class_names.index(clas.name) for clas in self.curr_rule.scope})
+        else:
+            self.scope_combo.setSelectedIndices({i for i in range(len(lesson_info.classes))})
+        add_widget(self.scope_combo,scope_layout)
+        write("为范围之外的班级排课时，程序将不会检查是否满足本条规则",self,self.viewLayout,0)
 
     def validate(self) -> bool:
         name,kind=self.rule_combo.currentData()
@@ -134,7 +143,9 @@ class RuleMessageBox(MessageBoxBase):
             if combo.currentText() not in [item.text for item in combo.items]:
                 return False
             new_rule[string_name]=combo.currentText()
-
+        if not self.scope_combo.selectedItems():
+            return False
+        new_rule["scope"]=[item.text for item in self.scope_combo.selectedItems()]
         self.new_rule=Rule(**new_rule)
         success,rule=self.check_rule(self.new_rule)
         if not success:
@@ -726,7 +737,9 @@ class Settings(QFrame):
             self.forbid_noon_continuous_card=SwitchSettingCard(FluentIcon.CALENDAR,"允许跨上下午连堂","允许将连堂课排在上午最后一节和下午第一节",cfg.allow_noon_continuous)
             add_widget(self.forbid_noon_continuous_card,self.layout,0)
             self.teachers_max_num_group=PushSettingCard("设置数量",FluentIcon.BOOK_SHELF,"老师同时最大上课数量","设置同一时间每个老师各个学科可以同时上课最大的数量（即最多允许该老师同时上几个班级该学科的课）")
-            add_widget(self.teachers_max_num_group,self.layout)
+            add_widget(self.teachers_max_num_group,self.layout,0)
+            self.max_tries_card=RangeSettingCard(cfg.max_tries,FluentIcon.CANCEL,"最大尝试次数","设置自动生成时同一时间最多尝试生成多少次，如果在尝试次数内无法生成出完全满足规则的课表，则会跳过该时间，并把剩余课程放在暂存区中")
+            add_widget(self.max_tries_card,self.layout)
             self.teachers_max_num_group.clicked.connect(self.set_teachers_max_num)
 
             add_widget(SeparatorWidget(orient=Qt.Horizontal),self.layout)

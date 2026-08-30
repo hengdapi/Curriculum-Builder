@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-import requests,json,webbrowser
-import sys,copy
-from typing import Literal,Any
+import copy
+import json
+import sys
+import webbrowser
 from threading import Thread
-from packaging import version
+from typing import Literal,Any
 
 import pandas as pd
+import requests
+from PySide6.QtCore import QTimer,Qt,Signal,QThread
 from PySide6.QtWidgets import QTableWidgetItem,QTableWidget,QApplication
-from PySide6.QtCore import QTimer,Qt
+from packaging import version
 from qfluentwidgets_pro import TableWidget,PrimaryPushButton,PushButton,FluentIcon,TextEdit
 
 from wr_settings import *
+
 with open("app_version.txt","r",encoding="utf-8") as f:
     app_version=f.read()
 logging.basicConfig(format="[%(levelname)s] %(asctime)s %(filename)s %(funcName)s %(lineno)d行:\t%(message)s",
@@ -34,22 +38,36 @@ appdata=os.path.join(os.environ["APPDATA"],"School-Timetable-Generator")
 gitcode_url="https://gitcode.com/hengdapi/School-Timetable-Generator"
 github_url="https://github.com/hengdapi/School-Timetable-Generator"
 
-def check_update(window,show_no_update=False):
+class CheckUpdateThread(QThread):
+    """检查更新线程：网络请求在子线程执行，避免阻塞 UI"""
+    has_update=Signal(dict)   # 发现新版本，携带 release 数据
+    no_update=Signal()        # 无新版本
+    error=Signal(str)         # 检查出错
+
+    def run(self):
+        try:
+            url="https://api.gitcode.com/api/v5/repos/2603_96523924/School-Timetable-Generator/releases/latest"
+
+            payload={}
+            headers={
+                'Accept':'application/json'
+            }
+
+            response=requests.get(url,headers=headers,data=payload,timeout=10).json()
+            logging.debug(f"检查更新api返回内容：{response}")
+
+            if version.parse(response["tag_name"])<=version.parse(app_version):
+                self.no_update.emit()
+            else:
+                self.has_update.emit(response)
+        except Exception as err:
+            e=traceback.format_exc()
+            logging.critical(f"检查更新出错：\n{e}")
+            self.error.emit(str(err))
+
+def _show_update_dialog(window,response:dict):
+    """在主线程显示新版本提示（由 CheckUpdateThread 信号触发）"""
     try:
-        url="https://api.gitcode.com/api/v5/repos/2603_96523924/School-Timetable-Generator/releases/latest"
-
-        payload={}
-        headers={
-            'Accept':'application/json'
-        }
-
-        response=requests.get(url,headers=headers,data=payload).json()
-        logging.debug(f"检查更新api返回内容：{response}")
-
-        if version.parse(response["tag_name"])<=version.parse(app_version):
-            if show_no_update:
-                Toast.info("无可用更新",f"当前已是最新版本：{app_version}",duration=3000,parent=window)
-            return
         logging.info(f"发现新版本：{response['tag_name']}")
         window.update_msg=Toast.info("发现新版本",f"新版本 {response["tag_name"]} 现已发布，更新内容如下：",duration=-1,parent=window)
         change_log=TextEdit()
@@ -69,11 +87,19 @@ def check_update(window,show_no_update=False):
         download_button.clicked.connect(lambda:download_update(window,response))
         window.update_msg.addWidget(download_button, alignment=Qt.AlignmentFlag.AlignLeft)
         window.update_msg.show()
-
     except Exception as err:
         e=traceback.format_exc()
         logging.critical(f"检查更新出错：\n{e}")
         show_error(window,err)
+
+def check_update(window,show_no_update=False):
+    """检查更新：网络请求在子线程执行，不阻塞 UI"""
+    check_thread=CheckUpdateThread(window)
+    window.check_update_thread=check_thread  # 持有引用，防止被垃圾回收
+    check_thread.has_update.connect(lambda response:_show_update_dialog(window,response))
+    check_thread.no_update.connect(lambda:Toast.info("无可用更新",f"当前已是最新版本：{app_version}",duration=3000,parent=window) if show_no_update else None)
+    check_thread.error.connect(lambda err:show_error(window,err))
+    check_thread.start()
 
 class UpdateThread(Thread):
     def __init__(self,response:dict):
@@ -454,9 +480,15 @@ class Class:
         :param teachers: 班级任课教师列表({学科:老师})
         """
         self.name=name
+        self.grade=None
         self.teachers=teachers
         self.timetable:dict[Time,list[Subject]]={Time(day,lesson):[] for day in range(1,6) for lesson in range(1,cfg.day_class_num+1)}
         self.left_subjects:list[Subject]=[]
+
+        self.priority_subjects: dict[Time,list[Subject]]={}
+        self.half_subjects: set[Subject]=set()
+        self.continue_num: dict[Subject,int]={}
+        self.set_lessons: dict[Time,Subject]={}
 
     def __str__(self):
         return self.name
@@ -482,7 +514,7 @@ class Class:
         return self.left_subjects.count(subject)
 
     def add_lesson(self,time:Time,subject:Subject):
-        if subject in half_subjects and time.all:
+        if subject in self.half_subjects and time.all:
             if not self.get_lessons(time):
                 time=time.sin_week
             else:
@@ -504,7 +536,7 @@ class Class:
                 self.remove_lesson(time.dou_week)
                 self.remove_lesson(time.sin_week)
                 return
-            if len(subjects)==1 and subjects[0] in half_subjects:
+            if len(subjects)==1 and subjects[0] in self.half_subjects:
                 time=time.sin_week
             if time.sin or time.all:
                 subject=subjects[0]
@@ -527,7 +559,7 @@ class Class:
         subjects2=self.get_lessons(time2)
         if not subjects1 or not subjects2:
             return
-        if len(subjects1)==1 and subjects1[0] in half_subjects and len(subjects2)==1 and subjects2[0] in half_subjects:
+        if len(subjects1)==1 and subjects1[0] in self.half_subjects and len(subjects2)==1 and subjects2[0] in self.half_subjects:
             self.remove_lesson(time1.sin_week)
             self.add_lesson(time2.dou_week,subjects1[0])
         else:
@@ -564,6 +596,19 @@ class Class:
                     data.loc[time.to_str(False,True),time.to_str(True,False)]+=f"【双】{self.get_teacher(subjects[1])}"
         return data
 
+class Grade:
+    def __init__(self,name,classes:list[Class]):
+        self.name=name
+        self.classes=classes
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+    def __eq__(self, value: object, /) -> bool:
+        if not isinstance(value,Grade):
+            return False
+        return self.name == value.name
+
 class LessonInfoEncoder(json.JSONEncoder):
     def default(self, o: Any) -> Any:
         if hasattr(o, "__json__"):
@@ -595,6 +640,10 @@ class Rule:
     def __init__(self,**kwargs):
         self.type=kwargs["type"]
         self.time=self.subject=self.number=self.subjectA=self.subjectB=self.teacherA=self.teacherB=None
+        if "scope" in kwargs:
+            self.scope=[lesson_info.classes[class_name] for class_name in kwargs["scope"]]
+        else:
+            self.scope:list[Class]=lesson_info.class_lst
         if self.type in [Rule_type.set_time,Rule_type.avoid_time,Rule_type.priority_time]:
             self.time=Time(string=kwargs["time"])
         if self.type in [Rule_type.set_time,Rule_type.avoid_time,Rule_type.priority_time,Rule_type.set_num,Rule_type.set_continue,Rule_type.half_num]:
@@ -611,7 +660,7 @@ class Rule:
     def __str__(self):
         ans=rule_types[self.type].replace("|","").replace("{"," ").replace("}"," ")
         for string in self.__dict__:
-            if string=="type" or self.__dict__[string] is None:
+            if string in ["type","scope"] or self.__dict__[string] is None:
                 continue
             ans=ans.replace(string,str(self.__dict__[string]))
         return ans
@@ -619,9 +668,10 @@ class Rule:
     def to_dict(self)->dict:
         ans={}
         for string in self.__dict__:
-            if self.__dict__[string] is None:
+            if self.__dict__[string] is None or string=="scope":
                 continue
             ans[str(string)]=str(self.__dict__[string])
+        ans["scope"]=[clas.name for clas in self.scope]
         return ans
 
     def __eq__(self, other):
@@ -639,6 +689,7 @@ class LessonInfo:
         self.classes: dict[str,Class]={}
         self.class_names:list[str]=[]
         self.class_lst:list[Class]=[]
+        self.grades:dict[str,Grade]={}
         self.rules: list[Rule]=[]
         self.saved=True
         logging.info("正在解析课程信息...")
@@ -662,21 +713,27 @@ class LessonInfo:
                 if clas[subject+" - 任课老师"]:
                     self.classes[class_name].teachers[subject]=self.teachers[clas[subject+" - 任课老师"]]
                     self.teachers[clas[subject+" - 任课老师"]].subjects.add(self.subjects[subject])
-                    if clas[subject+" - 任课老师"] in cfg.teachers_max_num.value:
-                        max_num=cfg.teachers_max_num.value[clas[subject+" - 任课老师"]][subject]
-                    else:
-                        max_num=1
+                    max_num=cfg.teachers_max_num.value.get(clas[subject+" - 任课老师"],{}).get(subject,1)
                     self.teachers[clas[subject+" - 任课老师"]].left_num[self.subjects[subject]]={Time(day,lesson,week):max_num for day in range(1,6) for lesson in range(1,cfg.day_class_num+1) for week in ["sin","dou","all"]}
                     lesson_count=int(clas[subject+" - 课时"])
                     for i in range(lesson_count):
                         self.classes[class_name].left_subjects.append(self.subjects[subject])
+                    self.classes[class_name].continue_num[self.subjects[subject]]=0
                     total_lessons+=lesson_count
             logging.debug(f"解析班级 {idx+1}/{len(lessons)}：{len(self.classes[class_name].teachers)} 位任课老师，{total_lessons} 节课")
+
+        for grade_name,grade_classes in cfg.grades_info.value.items():
+            self.grades[grade_name]=Grade(grade_name,[])
+            for class_name in grade_classes:
+                self.grades[grade_name].classes.append(self.classes[class_name])
+                self.classes[class_name].grade=self.grades[grade_name]
 
         self.class_names=list(self.classes.keys())
         self.class_lst=list(self.classes.values())
         self.teacher_lst=list(self.teachers.values())
         self.subject_lst=list(self.subjects.values())
+        self.grade_names=list(self.grades.keys())
+        self.grade_lst=list(self.grades.values())
         sys.setrecursionlimit(max(len(self.classes)*5*cfg.day_class_num*2,1000))
 
         for teacher in self.teacher_lst:
@@ -689,26 +746,25 @@ class LessonInfo:
         logging.debug("课程信息解析完成")
 lesson_info=LessonInfo()
 
-priority_subjects:dict[Time,list[Subject]]={}
-half_subjects:set[Subject]=set()
-continue_num:dict[Subject,int]={subject:0 for subject in lesson_info.subject_lst}
-set_lessons:list[tuple[Time,Subject]]=[]
 
-for rule in cfg.rules.value:
-    rule=Rule(**rule)
+
+for i in range(len(cfg.rules.value)):
+    rule=Rule(**cfg.rules.value[i])
+    cfg.rules.value[i]=rule.to_dict()
     lesson_info.rules.append(rule)
-    if rule.type==Rule_type.set_time:
-        set_lessons.append((rule.time,rule.subject))
-    elif rule.type==Rule_type.priority_time:
-        if rule.time not in priority_subjects:
-            priority_subjects[rule.time]=[rule.subject]
-        else:
-            priority_subjects[rule.time].append(rule.subject)
-    elif rule.type==Rule_type.half_num:
-        half_subjects.add(rule.subject)
-    elif rule.type==Rule_type.set_continue:
-        continue_num[rule.subject]=int(rule.number)
-
+    for clas in rule.scope:
+        if rule.type==Rule_type.set_time:
+            clas.set_lessons[rule.time]=rule.subject
+        elif rule.type==Rule_type.priority_time:
+            if rule.time not in clas.priority_subjects:
+                clas.priority_subjects[rule.time]=[rule.subject]
+            else:
+                clas.priority_subjects[rule.time].append(rule.subject)
+        elif rule.type==Rule_type.half_num:
+            clas.half_subjects.add(rule.subject)
+        elif rule.type==Rule_type.set_continue:
+            clas.continue_num[rule.subject]=int(rule.number)
+save_settings()
 logging.info("课程信息解析完毕，生成初始化完成")
 
 def diff_cfg(new_classes:list,new_teachers:list,new_subjects:list)->tuple[set,set,set]:

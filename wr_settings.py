@@ -16,7 +16,6 @@ class Settings(QConfig):
     subjects_info=ConfigItem("lessons_info","subjects_info",{},restart=True)
     lessons_info=ConfigItem("lessons_info","lessons_info",{},restart=True)
     teachers_info=ConfigItem("lessons_info","teachers_info",{},restart=True)
-    teachers_max_num=ConfigItem("lessons_info","teachers_max_num",{},restart=True)
     grades_info=ConfigItem("lessons_info","grades_info",{},restart=True)
 
     activity_info=ConfigItem("activity_info","activity_info",{},restart=True)
@@ -25,6 +24,8 @@ class Settings(QConfig):
     reduce_continue=OptionsConfigItem("rules","reduce_continue",True,BoolValidator())
     average_subjects=OptionsConfigItem("rules","average_subjects",True,BoolValidator())
     allow_noon_continuous=OptionsConfigItem("rules","allow_noon_continuous",False,BoolValidator())
+    teachers_max_num=ConfigItem("rules","teachers_max_num",{},restart=True)
+    max_tries=RangeConfigItem("rules","max_tries",10000,RangeValidator(1000,100000))
 
     object_splitter_state=ConfigItem("ui","object_splitter_state",None)
     preview_splitter_state=ConfigItem("ui","preview_splitter_state",None)
