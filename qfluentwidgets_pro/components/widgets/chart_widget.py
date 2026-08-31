@@ -3,6 +3,7 @@
 ECharts chart widget for PySide6 Fluent Widgets
 """
 
+import importlib
 import json
 
 from PySide6.QtCore import QFile, QSize, QTextStream, QTimer
@@ -10,8 +11,40 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QVBoxLayout
 
 from ...common.config import isDarkTheme, qconfig
-from ...qframelesswindow.webengine import FramelessWebEngineView
 from .card_widget import SimpleCardWidget
+
+
+def _getWebEngineViewClass():
+    """延迟加载 FramelessWebEngineView（Qt WebEngine 视图类）
+
+    Qt WebEngine 打包后约 300MB，且原本在程序启动时就会被自动加载。
+    改为运行时按需动态导入后，未使用图表功能时完全不加载 WebEngine，
+    可显著减小打包体积。
+
+    这里使用 importlib 动态导入而非静态 import，目的是让打包工具
+    （Nuitka）无法静态解析到 WebEngine，从而不会将其打包进产物。
+
+    Returns
+    -------
+    type
+        FramelessWebEngineView 类
+
+    Raises
+    ------
+    ImportError
+        打包时排除了 WebEngine 时抛出（见 deploy.py 的 REMOVE_WEBENGINE）
+    """
+    try:
+        module = importlib.import_module(
+            "...qframelesswindow.webengine", __package__
+        )
+    except ImportError as e:
+        raise ImportError(
+            "图表功能需要 Qt WebEngine，但本次打包为减小体积已将其排除。"
+            "如需使用图表，请在 deploy.py 中将 REMOVE_WEBENGINE 设为 False 后重新打包。"
+        ) from e
+
+    return module.FramelessWebEngineView
 
 
 class ChartWidget(SimpleCardWidget):
@@ -46,8 +79,8 @@ class ChartWidget(SimpleCardWidget):
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(15, 15, 15, 15)
 
-        # Create web view
-        self._browser = FramelessWebEngineView(self)
+        # Create web view（延迟加载 WebEngine，未使用图表时不会加载）
+        self._browser = _getWebEngineViewClass()(self)
         self._layout.addWidget(self._browser)
 
         # Connect load finished signal
